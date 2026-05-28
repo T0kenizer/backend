@@ -1,0 +1,10 @@
+*
+src/**/*.spec.ts
+
+!src/
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!mikro-orm.config.ts
+!migrations/
