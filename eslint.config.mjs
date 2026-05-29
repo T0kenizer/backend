@@ -8,6 +8,7 @@ export default defineConfig([
   globalIgnores([
     'dist/**',
     'node_modules/**',
+    'migrations/**'
   ]),
   {
     files: ['**/*.ts'],

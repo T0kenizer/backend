@@ -10,8 +10,12 @@ import type { Request, Response } from 'express';
 @Injectable()
 export class SessionsService {
   public create(req: Request, rememberMe: boolean = false) {
+    const user = req.user;
+
     return new Promise((resolve, reject) => {
-      req.login(req.user, (error: Error) => {
+      if (!user) return reject(new Error('No authenticated user on request'));
+
+      req.login(user, (error: Error) => {
         if (error) return reject(error);
 
         const expiresIn = rememberMe
@@ -19,9 +23,10 @@ export class SessionsService {
           : SESSION_TIMEOUT_MS;
 
         req.session.cookie.maxAge = expiresIn;
+        req.session.rememberMe = rememberMe;
 
         resolve({
-          user: wrap(req.user).toObject(),
+          user: wrap(user).toObject(),
           expiresAt: new Date(Date.now() + expiresIn),
           expiresIn,
         });

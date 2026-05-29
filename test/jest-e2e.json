@@ -1,0 +1,19 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.ts$": "ts-jest"
+  },
+  "testEnvironment": "node",
+  "moduleNameMapper": {
+    "^@interceptors/(.*)$": "<rootDir>/src/interceptors/$1",
+    "^@commands/(.*)$": "<rootDir>/src/modules/commands/$1",
+    "^@modules/(.*)$": "<rootDir>/src/modules/$1",
+    "^@entities/(.*)$": "<rootDir>/src/entities/$1",
+    "^@utils/(.*)$": "<rootDir>/src/utils/$1",
+    "^@test/(.*)$": "<rootDir>/test/$1",
+    "^@/(.*)$": "<rootDir>/src/$1",
+    "^package.json$": "<rootDir>/package.json"
+  }
+}

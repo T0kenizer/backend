@@ -8,7 +8,8 @@ import { ConfigModule as NestConfigModule } from '@nestjs/config';
   imports: [
     NestConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
+      // Env vars are injected by docker-compose (`env_file`), so we read them
+      // straight from `process.env` rather than loading any .env file here.
       validate: (config) => {
         const result = configSchema.safeParse(config);
         if (!result.success)
