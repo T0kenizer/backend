@@ -12,7 +12,7 @@ export const configSchema = z.object({
   POSTGRES_DB: z.string().nonempty(),
 
   SMTP_HOST: z.string().nonempty(),
-  SMTP_PORT: z.string().nonempty(),
+  SMTP_PORT: z.coerce.number().default(1025),
   SMTP_FROM: z.string().nonempty(),
 
   REDIS_HOST: z.string().nonempty(),
