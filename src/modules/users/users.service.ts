@@ -141,6 +141,12 @@ export class UsersService {
     return user;
   }
 
+  public async updatePassword(user: User, password: string): Promise<void> {
+    const entityManager = this.usersRepository.getEntityManager();
+    user.password = bcrypt.hashSync(password, HASH_ROUNDS);
+    await entityManager.flush();
+  }
+
   private static hashPassword(password: string): string {
     return bcrypt.hashSync(password, HASH_ROUNDS);
   }
