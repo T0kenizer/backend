@@ -19,9 +19,23 @@ import { MailService } from './mail.service';
           from: config.get('SMTP_FROM'),
         },
         template: {
-          dir: join(__dirname, 'templates'),
+          dir: join(process.cwd(), 'src', 'modules', 'mail', 'templates'),
           adapter: new HandlebarsAdapter(),
           options: { strict: true },
+        },
+        options: {
+          layout: 'partials/base',
+          partials: {
+            dir: join(
+              process.cwd(),
+              'src',
+              'modules',
+              'mail',
+              'templates',
+              'partials',
+            ),
+            options: { strict: true },
+          },
         },
       }),
     }),

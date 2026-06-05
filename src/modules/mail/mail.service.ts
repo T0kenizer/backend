@@ -10,7 +10,11 @@ export class MailService {
       to: email,
       subject: 'Reset your password',
       template: 'reset-password',
-      context: { resetUrl },
+      context: {
+        resetUrl,
+        title: 'Reset your password',
+        year: new Date().getFullYear(),
+      },
     });
   }
 }
