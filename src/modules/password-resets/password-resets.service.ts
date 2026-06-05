@@ -5,7 +5,11 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { ConfigService } from '@modules/config/config.service';
 import { MailService } from '@modules/mail/mail.service';
 import { UsersService } from '@modules/users/users.service';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -50,15 +54,12 @@ export class PasswordResetsService {
     const token = await this.findValidToken(raw);
     const em = this.tokenRepository.getEntityManager();
 
-    if (!token) return;
     await this.usersService.updatePassword(token.user, password);
     token.usedAt = new Date();
     await em.flush();
   }
 
-  private async findValidToken(
-    raw: string,
-  ): Promise<PasswordResetToken | null> {
+  private async findValidToken(raw: string): Promise<PasswordResetToken> {
     const tokenHash = this.hash(raw);
 
     const token = await this.tokenRepository.findOne(
@@ -66,9 +67,10 @@ export class PasswordResetsService {
       { populate: ['user'] },
     );
 
-    if (token && token.expiresAt < new Date()) {
+    if (!token) throw new NotFoundException('Invalid or expired token');
+
+    if (token.expiresAt < new Date())
       throw new BadRequestException('Token has expired');
-    }
 
     return token;
   }
