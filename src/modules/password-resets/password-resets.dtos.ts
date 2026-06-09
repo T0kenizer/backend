@@ -1,9 +1,13 @@
-import { requestResetSchema } from '@tokenizer/shared/schemas';
+import {
+  applyResetDataSchema,
+  requestResetDataSchema,
+} from '@tokenizer/shared/schemas';
 import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
 
-export class RequestResetData extends createZodDto(requestResetSchema) {}
+/** Request Reset DTOs */
 
-export class ApplyResetData extends createZodDto(
-  z.object({ password: z.string().nonempty().max(72) }),
-) {}
+export class RequestResetData extends createZodDto(requestResetDataSchema) {}
+
+/** Apply Reset DTOs */
+
+export class ApplyResetData extends createZodDto(applyResetDataSchema) {}
