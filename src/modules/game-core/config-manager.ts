@@ -1,9 +1,22 @@
+import type { GameConfig } from './config/game-config';
+
+// Thin wrapper for the ORM entity to serialize/deserialize GameConfig from JSONB.
 export class ConfigManager {
-  public static fromJSON(json: unknown): unknown {
-    return new ConfigManager();
+  private readonly config: GameConfig;
+
+  constructor(config: GameConfig) {
+    this.config = config;
   }
 
-  public toJSON(): unknown {
-    return {};
+  public static fromJSON(json: unknown): ConfigManager {
+    return new ConfigManager(json as GameConfig);
+  }
+
+  public toJSON(): GameConfig {
+    return this.config;
+  }
+
+  public getConfig(): GameConfig {
+    return this.config;
   }
 }
