@@ -29,7 +29,7 @@ export class GameSession {
   @Property({
     persist: false,
   })
-  get config(): unknown {
+  get config(): ConfigManager {
     return ConfigManager.fromJSON(this._config);
   }
 
