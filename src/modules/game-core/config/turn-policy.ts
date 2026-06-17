@@ -1,4 +1,4 @@
-import type { Duration } from '../types';
+import type { Duration } from '@modules/game-core/game-core.types';
 
 export enum TurnRegime {
   SEQUENTIAL = 'SEQUENTIAL',

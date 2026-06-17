@@ -1,12 +1,18 @@
-import { AmountForm } from '../config/action-def';
-import { PotMode } from '../config/economy-policy';
-import type { GameConfig } from '../config/game-config';
-import type { ParticipantId, RoundId } from '../types';
-import type { ActionParams } from './action';
-import { Action } from './action';
-import { Participant, ParticipantStatus } from './participant';
-import { Pot } from './pot';
-import { TurnState } from './turn-state';
+import { AmountForm } from '@modules/game-core/config/action-def';
+import { PotMode } from '@modules/game-core/config/economy-policy';
+import type { GameConfig } from '@modules/game-core/config/game-config';
+import type {
+  ParticipantId,
+  RoundId,
+} from '@modules/game-core/game-core.types';
+import type { ActionParams } from '@modules/game-core/runtime/action';
+import { Action } from '@modules/game-core/runtime/action';
+import {
+  Participant,
+  ParticipantStatus,
+} from '@modules/game-core/runtime/participant';
+import { Pot } from '@modules/game-core/runtime/pot';
+import { TurnState } from '@modules/game-core/runtime/turn-state';
 
 export enum RoundStatus {
   INIT = 'INIT',

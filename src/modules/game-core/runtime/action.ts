@@ -1,4 +1,7 @@
-import type { ActionId, ParticipantId } from '../types';
+import type {
+  ActionId,
+  ParticipantId,
+} from '@modules/game-core/game-core.types';
 
 export interface ActionParams {
   participantId: ParticipantId;

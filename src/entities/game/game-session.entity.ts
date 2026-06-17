@@ -1,6 +1,15 @@
+import { GameParticipant } from '@entities/game/game-participant.entity';
 import { User } from '@entities/user.entity';
-import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/core';
+import {
+  Collection,
+  Entity,
+  ManyToOne,
+  OneToMany,
+  PrimaryKey,
+  Property,
+} from '@mikro-orm/core';
 import { ConfigManager } from '@modules/game-core/config-manager';
+import type { ConfigJSON } from '@modules/game-core/game-core.types';
 
 @Entity({
   tableName: 'game_sessions',
@@ -18,13 +27,16 @@ export class GameSession {
     type: 'jsonb',
     nullable: false,
   })
-  private _config: unknown;
+  private _config!: ConfigJSON;
 
   @ManyToOne(() => User, {
     name: 'owner_uuid',
     nullable: false,
   })
   owner!: User;
+
+  @OneToMany(() => GameParticipant, (participant) => participant.session)
+  participants = new Collection<GameParticipant>(this);
 
   @Property({
     persist: false,

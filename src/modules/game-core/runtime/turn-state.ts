@@ -1,9 +1,14 @@
-import type { ActionDef } from '../config/action-def';
-import type { TurnPolicy } from '../config/turn-policy';
-import { Direction, TurnRegime } from '../config/turn-policy';
-import type { ParticipantId } from '../types';
-import type { Participant } from './participant';
-import { ParticipantStatus } from './participant';
+import type { ActionDef } from '@modules/game-core/config/action-def';
+import {
+  Direction,
+  TurnRegime,
+  type TurnPolicy,
+} from '@modules/game-core/config/turn-policy';
+import type { ParticipantId } from '@modules/game-core/game-core.types';
+import {
+  ParticipantStatus,
+  type Participant,
+} from '@modules/game-core/runtime/participant';
 
 export interface InterruptionClaim {
   participantId: ParticipantId;
