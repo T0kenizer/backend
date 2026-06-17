@@ -1,4 +1,7 @@
-import type { ControllerIdentifier, ParticipantId } from '../types';
+import type {
+  ControllerIdentifier,
+  ParticipantId,
+} from '@modules/game-core/game-core.types';
 
 export enum ParticipantStatus {
   ACTIVE = 'ACTIVE',

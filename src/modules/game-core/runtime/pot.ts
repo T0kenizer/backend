@@ -1,5 +1,5 @@
-import type { ParticipantId, PotId } from '../types';
-import type { Participant } from './participant';
+import type { ParticipantId, PotId } from '@modules/game-core/game-core.types';
+import type { Participant } from '@modules/game-core/runtime/participant';
 
 export class Pot {
   readonly id: PotId;

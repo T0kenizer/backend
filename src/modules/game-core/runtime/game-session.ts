@@ -1,11 +1,14 @@
-import type { GameConfig } from '../config/game-config';
+import type { GameConfig } from '@modules/game-core/config/game-config';
 import type {
   ControllerIdentifier,
   GameSessionId,
   ParticipantId,
-} from '../types';
-import { Participant, ParticipantStatus } from './participant';
-import { Round, RoundStatus } from './round';
+} from '@modules/game-core/game-core.types';
+import {
+  Participant,
+  ParticipantStatus,
+} from '@modules/game-core/runtime/participant';
+import { Round, RoundStatus } from '@modules/game-core/runtime/round';
 
 export enum GameSessionStatus {
   LOBBY = 'LOBBY',
