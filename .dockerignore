@@ -1,4 +1,5 @@
 *
+src/**/*.spec.ts
 
 !src/
 !test/
