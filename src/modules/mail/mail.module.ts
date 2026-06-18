@@ -25,21 +25,14 @@ import { MailService } from './mail.service';
           from: config.get('SMTP_FROM'),
         },
         template: {
-          dir: join(process.cwd(), 'src', 'modules', 'mail', 'templates'),
+          dir: join(__dirname, 'templates'),
           adapter: new HandlebarsAdapter(),
           options: { strict: true },
         },
         options: {
           layout: 'partials/base',
           partials: {
-            dir: join(
-              process.cwd(),
-              'src',
-              'modules',
-              'mail',
-              'templates',
-              'partials',
-            ),
+            dir: join(__dirname, 'templates', 'partials'),
             options: { strict: true },
           },
         },

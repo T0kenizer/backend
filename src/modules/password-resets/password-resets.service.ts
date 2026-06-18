@@ -8,6 +8,7 @@ import { UsersService } from '@modules/users/users.service';
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
@@ -16,6 +17,8 @@ const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 @Injectable()
 export class PasswordResetsService {
+  private readonly logger = new Logger(PasswordResetsService.name);
+
   constructor(
     @InjectRepository(PasswordResetToken)
     private readonly tokenRepository: EntityRepository<PasswordResetToken>,
@@ -43,7 +46,17 @@ export class PasswordResetsService {
     await em.flush();
 
     const resetUrl = `${this.configService.get('FRONTEND_URL')}/reset-password?token=${rawToken}`;
-    await this.mailService.sendPasswordReset(email, resetUrl);
+
+    try {
+      await this.mailService.sendPasswordReset(email, resetUrl);
+    } catch (error) {
+      // Never leak whether the email exists, and never let a mail failure
+      // crash the request or the process.
+      this.logger.error(
+        `Failed to send password reset email to ${email}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 
   public async validateToken(raw: string): Promise<void> {
