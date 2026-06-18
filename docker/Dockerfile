@@ -2,26 +2,25 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Install all deps; do NOT skip scripts so @tokenizer/shared's `prepare`
-# script builds its dist/ (the published GitHub package does not ship dist/).
 COPY package*.json ./
 RUN npm ci
 
-COPY tsconfig*.json ./
+COPY tsconfig*.json mikro-orm.config.ts ./
 COPY src ./src
+COPY migrations ./migrations
 
-RUN npm run build
+RUN npm run build && npm run build:migrations
 
 FROM node:24-alpine AS migrator
 
 ENV NODE_ENV=production
+ENV MIKRO_ORM_CLI_USE_TS_NODE=false
 
 WORKDIR /app
 
+COPY package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY package*.json tsconfig*.json mikro-orm.config.ts ./
-COPY migrations ./migrations
 
 CMD ["npx", "mikro-orm", "migration:up"]
 
@@ -30,9 +29,7 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 
 COPY package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-
-RUN npm prune --production
+RUN npm ci --ignore-scripts
 
 FROM node:24-alpine AS runner
 

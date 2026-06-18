@@ -98,5 +98,12 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
   }
 }
