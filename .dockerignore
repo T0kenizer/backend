@@ -11,3 +11,4 @@ src/**/*.spec.ts
 !tsconfig.migrations.json
 !mikro-orm.config.ts
 !jest.config.ts
+!nest-cli.json
