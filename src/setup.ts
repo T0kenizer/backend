@@ -47,7 +47,10 @@ export function setupApp(app: INestApplication): INestApplication {
   const redisService = app.get(RedisService);
 
   app.enableCors({
-    origin: configService.get('NODE_ENV') === 'production' ? false : true,
+    origin:
+      configService.get('NODE_ENV') === 'production'
+        ? 'https://tokenizer.fr'
+        : true,
     credentials: true,
   });
 
