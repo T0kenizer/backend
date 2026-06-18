@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-COPY tsconfig*.json mikro-orm.config.ts ./
+COPY tsconfig*.json mikro-orm.config.ts nest-cli.json ./
 COPY src ./src
 COPY migrations ./migrations
 
