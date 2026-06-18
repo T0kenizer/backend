@@ -14,6 +14,12 @@ import { MailService } from './mail.service';
           host: config.get('SMTP_HOST'),
           port: config.get('SMTP_PORT'),
           secure: false,
+          auth: config.get('SMTP_USER')
+            ? {
+                user: config.get('SMTP_USER'),
+                pass: config.get('SMTP_PASSWORD'),
+              }
+            : undefined,
         },
         defaults: {
           from: config.get('SMTP_FROM'),

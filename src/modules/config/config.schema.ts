@@ -13,6 +13,8 @@ export const configSchema = z.object({
 
   SMTP_HOST: z.string().nonempty(),
   SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().nonempty(),
 
   REDIS_HOST: z.string().nonempty(),
