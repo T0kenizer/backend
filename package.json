@@ -1,0 +1,111 @@
+{
+  "name": "@tokenizer/backend",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "build:migrations": "tsc -p tsconfig.migrations.json",
+    "command": "ts-node -r tsconfig-paths/register src/cli.ts",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix",
+    "makemigrations": "mikro-orm migration:create",
+    "migrate": "mikro-orm migration:up",
+    "migrate:down": "mikro-orm migration:down",
+    "prepare": "husky",
+    "start": "nest start",
+    "start:debug": "nest start --debug --watch",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main",
+    "test": "jest",
+    "test:cov": "jest --coverage",
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:watch": "jest --watch",
+    "update:shared": "npm update @tokenizer/shared"
+  },
+  "lint-staged": {
+    "*.{js,ts}": [
+      "npm run format",
+      "npm run lint:fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "npm run format"
+    ]
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
+    "@mikro-orm/core": "^6.6.7",
+    "@mikro-orm/nestjs": "^6.1.1",
+    "@mikro-orm/postgresql": "^6.6.7",
+    "@nestjs-modules/mailer": "^2.3.6",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/swagger": "^11.4.4",
+    "@tokenizer/shared": "github:T0kenizer/shared#feature/init",
+    "bcrypt": "^6.0.0",
+    "connect-redis": "^9.0.0",
+    "express-session": "^1.19.0",
+    "nest-commander": "^3.20.1",
+    "nestjs-zod": "^5.4.0",
+    "nodemailer": "^8.0.10",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "redis": "^5.12.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "slugify": "^1.6.9"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@mikro-orm/cli": "^6.6.7",
+    "@mikro-orm/migrations": "^6.6.7",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.0",
+    "@types/express-session": "^1.19.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.10.7",
+    "@types/nodemailer": "^8.0.0",
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.17",
+    "@types/passport-local": "^1.0.38",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^16.0.0",
+    "husky": "^9.1.7",
+    "jest": "^30.0.0",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.4.2",
+    "prettier-plugin-jsdoc": "^1.8.1",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "prettier-plugin-packagejson": "^3.0.2",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./mikro-orm.config.ts",
+      "./dist/mikro-orm.config.js"
+    ]
+  }
+}
