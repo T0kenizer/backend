@@ -45,7 +45,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.4",
-    "@tokenizer/shared": "github:T0kenizer/shared#feature/init",
+    "@tokenizer/shared": "github:T0kenizer/shared#main",
     "bcrypt": "^6.0.0",
     "connect-redis": "^9.0.0",
     "express-session": "^1.19.0",
