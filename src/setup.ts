@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { RedisStore } from 'connect-redis';
+import type { Express } from 'express';
 import session from 'express-session';
 import { ZodSerializationException, ZodValidationPipe } from 'nestjs-zod';
 import passport from 'passport';
@@ -46,6 +47,14 @@ export function setupApp(app: INestApplication): INestApplication {
   const configService = app.get(ConfigService);
   const redisService = app.get(RedisService);
 
+  // TLS is terminated by Cloudflare; internally everything is plain HTTP over
+  // cloudflared -> Traefik -> Node (two proxy hops). Trusting them lets
+  // express-session read X-Forwarded-Proto: https and emit the `secure` cookie.
+  if (configService.get('NODE_ENV') === 'production') {
+    const expressApp = app.getHttpAdapter().getInstance() as Express;
+    expressApp.set('trust proxy', 2);
+  }
+
   app.enableCors({
     origin:
       configService.get('NODE_ENV') === 'production'
@@ -68,8 +77,9 @@ export function setupApp(app: INestApplication): INestApplication {
         httpOnly: true,
         secure: configService.get('NODE_ENV') === 'production',
         signed: true,
-        sameSite:
-          configService.get('NODE_ENV') === 'production' ? 'strict' : 'lax',
+        // 'lax' (not 'strict') so the session cookie is still sent on the
+        // top-level redirect coming back from Google's OAuth screen.
+        sameSite: 'lax',
       },
     }),
   );
