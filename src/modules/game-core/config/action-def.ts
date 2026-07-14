@@ -11,4 +11,10 @@ export interface ActionDef {
   amountForm: AmountForm;
   /** When true, submitting this action opens an interruption window */
   grantsInterruption: boolean;
+  /**
+   * When true, submitting this action removes the participant from the round
+   * (e.g. "fold"). They are skipped by turn rotation and excluded from the pool
+   * evaluated by automatic end conditions.
+   */
+  foldsParticipant?: boolean;
 }
