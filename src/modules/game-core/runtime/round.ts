@@ -125,15 +125,20 @@ export class Round {
     }
 
     const action = new Action(params);
+    const participant = this.participantMap.get(params.participantId);
+    if (!participant) throw new Error('Participant not found');
 
     // Move chips if an amount is provided
     if (params.amount !== undefined && params.amount > 0) {
-      const participant = this.participantMap.get(params.participantId);
-      if (!participant) throw new Error('Participant not found');
-
       const capped = Math.min(params.amount, participant.balance);
       participant.balance -= capped;
       this.mainPot.addContribution(participant.id, capped);
+    }
+
+    // Actions flagged as folding remove the participant from the round before
+    // the turn advances, so rotation and end conditions skip them.
+    if (def.foldsParticipant) {
+      participant.status = ParticipantStatus.FOLDED;
     }
 
     this.actionLog.push(action);
@@ -154,10 +159,42 @@ export class Round {
     return action;
   }
 
-  resolve(): void {
+  /**
+   * Participants still contesting the round (not folded, not eliminated).
+   * Seat-ordered.
+   */
+  contenders(): Participant[] {
+    return [...this.participantMap.values()]
+      .filter((p) => p.status === ParticipantStatus.ACTIVE)
+      .sort((a, b) => a.seatIndex - b.seatIndex);
+  }
+
+  /**
+   * Settles the round. When winners are supplied, every pot is awarded to the
+   * eligible winners (split equally, remainder to the earliest seat); the
+   * remainder guarantees no chips are lost to integer division. Idempotent.
+   */
+  resolve(winnerIds: ParticipantId[] = []): void {
     if (this.status === RoundStatus.RESOLVED) return;
     this.turnState.closeInterruptionWindow();
-    // AUTOMATIC resolution hooks would run here in future iterations
+
+    for (const pot of this.pots) {
+      const eligibleWinners = winnerIds
+        .map((id) => this.participantMap.get(id))
+        .filter(
+          (p): p is Participant =>
+            p !== undefined && pot.eligibleParticipants.includes(p.id),
+        );
+      if (eligibleWinners.length === 0 || pot.amount === 0) continue;
+
+      const share = Math.floor(pot.amount / eligibleWinners.length);
+      const remainder = pot.amount - share * eligibleWinners.length;
+      pot.amount = 0;
+      eligibleWinners.forEach((winner, index) => {
+        winner.balance += share + (index === 0 ? remainder : 0);
+      });
+    }
+
     this.status = RoundStatus.RESOLVED;
   }
 
