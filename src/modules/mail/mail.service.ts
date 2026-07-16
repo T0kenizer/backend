@@ -17,4 +17,17 @@ export class MailService {
       },
     });
   }
+
+  public sendAccountDeletion(email: string, deleteUrl: string) {
+    return this.mailerService.sendMail({
+      to: email,
+      subject: 'Confirm account deletion',
+      template: 'account-deletion',
+      context: {
+        deleteUrl,
+        title: 'Delete your account',
+        year: new Date().getFullYear(),
+      },
+    });
+  }
 }

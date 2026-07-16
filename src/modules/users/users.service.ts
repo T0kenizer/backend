@@ -179,6 +179,14 @@ export class UsersService {
     return user;
   }
 
+  public async softDelete(uuid: string): Promise<User> {
+    const user = await this.getUserByUuid(uuid);
+    const em = this.usersRepository.getEntityManager();
+    user.deletedAt = new Date();
+    await em.flush();
+    return user;
+  }
+
   private static hashPassword(password: string): string {
     return bcrypt.hashSync(password, HASH_ROUNDS);
   }
