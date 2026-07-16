@@ -109,11 +109,13 @@ export class UsersService {
     return candidate;
   }
 
+  private validateUsername(username: string): void {
+    if (BANNED_USERNAMES.includes(username))
+      throw new BadRequestException(`Username "${username}" is not allowed`);
+  }
+
   public async create(data: RequiredEntityData<User>): Promise<User> {
-    if (BANNED_USERNAMES.includes(data.username))
-      throw new BadRequestException(
-        `Username "${data.username}" is not allowed`,
-      );
+    this.validateUsername(data.username);
 
     const existingUser = await Promise.all([
       this.usersRepository.findOne({ username: data.username }),
@@ -138,6 +140,29 @@ export class UsersService {
 
     await em.flush();
 
+    return user;
+  }
+
+  public async updateProfile(
+    user: User,
+    data: { username?: string; displayName?: string | null },
+  ): Promise<User> {
+    const em = this.usersRepository.getEntityManager();
+
+    if (data.username && data.username !== user.username) {
+      this.validateUsername(data.username);
+      const existing = await this.usersRepository.findOne({
+        username: data.username,
+      });
+      if (existing) throw new ConflictException('Username is already in use');
+      user.username = data.username;
+    }
+
+    if (data.displayName !== undefined) {
+      user.displayName = data.displayName ?? undefined;
+    }
+
+    await em.flush();
     return user;
   }
 
