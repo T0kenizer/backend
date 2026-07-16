@@ -148,35 +148,42 @@ export class UsersService {
     data: { username?: string; displayName?: string | null },
   ): Promise<User> {
     const em = this.usersRepository.getEntityManager();
+    const managed = await this.usersRepository.findOneOrFail({
+      uuid: user.uuid,
+    });
 
-    if (data.username && data.username !== user.username) {
+    if (data.username && data.username !== managed.username) {
       this.validateUsername(data.username);
       const existing = await this.usersRepository.findOne({
         username: data.username,
       });
       if (existing) throw new ConflictException('Username is already in use');
-      user.username = data.username;
+      managed.username = data.username;
     }
 
     if (data.displayName !== undefined) {
-      user.displayName = data.displayName ?? undefined;
+      managed.displayName = data.displayName ?? undefined;
     }
 
     await em.flush();
-    return user;
+    return managed;
   }
 
   public async updatePassword(user: User, password: string): Promise<void> {
-    const entityManager = this.usersRepository.getEntityManager();
-    user.password = bcrypt.hashSync(password, HASH_ROUNDS);
-    await entityManager.flush();
+    const em = this.usersRepository.getEntityManager();
+    const managed = em.getReference(User, user.uuid);
+    managed.password = bcrypt.hashSync(password, HASH_ROUNDS);
+    await em.flush();
   }
 
   public async unlinkGoogle(user: User): Promise<User> {
     const em = this.usersRepository.getEntityManager();
-    user.googleId = undefined;
+    const managed = await this.usersRepository.findOneOrFail({
+      uuid: user.uuid,
+    });
+    managed.googleId = undefined;
     await em.flush();
-    return user;
+    return managed;
   }
 
   public async softDelete(uuid: string): Promise<User> {
