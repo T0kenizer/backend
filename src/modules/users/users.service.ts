@@ -172,6 +172,13 @@ export class UsersService {
     await entityManager.flush();
   }
 
+  public async unlinkGoogle(user: User): Promise<User> {
+    const em = this.usersRepository.getEntityManager();
+    user.googleId = undefined;
+    await em.flush();
+    return user;
+  }
+
   private static hashPassword(password: string): string {
     return bcrypt.hashSync(password, HASH_ROUNDS);
   }
