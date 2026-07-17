@@ -7,10 +7,8 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes } from 'crypto';
 import { ChangePasswordData, UpdateProfileData } from './profile.dtos';
 
 const TOKEN_TTL_S = 3600; // 1 hour
@@ -60,15 +58,13 @@ export class ProfileService {
   }
 
   public async requestDeletion(user: User): Promise<void> {
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = this.hash(rawToken);
     const FRONTEND_URL = this.configService.get('FRONTEND_URL');
-
-    await this.redisService.client.set(
-      `${REDIS_PREFIX}${tokenHash}`,
+    const rawToken = await this.redisService.setToken(
+      REDIS_PREFIX,
       user.uuid,
-      { EX: TOKEN_TTL_S },
+      TOKEN_TTL_S,
     );
+
     const deleteUrl = `${FRONTEND_URL}/delete-account?token=${rawToken}`;
 
     try {
@@ -82,16 +78,7 @@ export class ProfileService {
   }
 
   public async confirmDeletion(rawToken: string): Promise<User> {
-    const tokenHash = this.hash(rawToken);
-    const key = `${REDIS_PREFIX}${tokenHash}`;
-
-    const userUuid = await this.redisService.client.getDel(key);
-    if (!userUuid) throw new NotFoundException('Invalid or expired token');
-
+    const userUuid = await this.redisService.getToken(REDIS_PREFIX, rawToken);
     return this.usersService.softDelete(userUuid);
-  }
-
-  private hash(value: string): string {
-    return createHash('sha256').update(value).digest('hex');
   }
 }
