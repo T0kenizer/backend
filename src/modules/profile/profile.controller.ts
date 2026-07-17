@@ -40,6 +40,13 @@ export class ProfileController {
     return wrap(user).toObject();
   }
 
+  // TODO: add S3
+  @Patch('/avatar')
+  @ZodSerializerDto(DTOs.ProfileResponse)
+  public updateAvatar(@Req() req: Request) {
+    return wrap(req.user!).toObject();
+  }
+
   @Patch('/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   public changePassword(

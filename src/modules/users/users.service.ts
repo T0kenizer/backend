@@ -145,25 +145,27 @@ export class UsersService {
 
   public async updateProfile(
     user: User,
-    data: { username?: string; displayName?: string | null },
+    data: {
+      username?: string;
+      displayName?: string | null;
+      email?: string;
+      avatarUrl?: string | null;
+    },
   ): Promise<User> {
     const em = this.usersRepository.getEntityManager();
     const managed = await this.usersRepository.findOneOrFail({
       uuid: user.uuid,
     });
 
-    if (data.username && data.username !== managed.username) {
-      this.validateUsername(data.username);
-      const existing = await this.usersRepository.findOne({
-        username: data.username,
-      });
-      if (existing) throw new ConflictException('Username is already in use');
-      managed.username = data.username;
-    }
+    if (data.username) this.validateUsername(data.username);
+    await this.updateUniqueField(managed, 'username', data.username);
+    await this.updateUniqueField(managed, 'email', data.email);
 
     if (data.displayName !== undefined) {
       managed.displayName = data.displayName ?? undefined;
     }
+
+    // TODO: avatarUrl update with S3
 
     await em.flush();
     return managed;
@@ -200,5 +202,16 @@ export class UsersService {
 
   private static comparePassword(password: string, hash: string): boolean {
     return bcrypt.compareSync(password, hash);
+  }
+
+  private async updateUniqueField(
+    managed: User,
+    field: keyof Pick<User, 'username' | 'email'>,
+    value: string | undefined,
+  ): Promise<void> {
+    if (!value || value === managed[field]) return;
+    const existing = await this.usersRepository.findOne({ [field]: value });
+    if (existing) throw new ConflictException(`${field} is already in use`);
+    managed[field] = value;
   }
 }
