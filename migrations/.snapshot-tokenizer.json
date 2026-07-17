@@ -338,40 +338,27 @@
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_email",
-          "unique": false,
-          "primary": false
+          "unique": true,
+          "primary": false,
+          "expression": "CREATE UNIQUE INDEX idx_users_email ON public.users USING btree (email) WHERE (deleted_at IS NULL)"
         },
         {
           "columnNames": ["google_id"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_google_id",
-          "unique": false,
-          "primary": false
+          "unique": true,
+          "primary": false,
+          "expression": "CREATE UNIQUE INDEX idx_users_google_id ON public.users USING btree (google_id) WHERE (deleted_at IS NULL)"
         },
         {
           "columnNames": ["username"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_username",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": ["email"],
-          "composite": false,
-          "constraint": true,
-          "keyName": "users_email_unique",
           "unique": true,
-          "primary": false
-        },
-        {
-          "columnNames": ["google_id"],
-          "composite": false,
-          "constraint": true,
-          "keyName": "users_google_id_unique",
-          "unique": true,
-          "primary": false
+          "primary": false,
+          "expression": "CREATE UNIQUE INDEX idx_users_username ON public.users USING btree (username) WHERE (deleted_at IS NULL)"
         },
         {
           "columnNames": ["uuid"],
@@ -380,14 +367,6 @@
           "keyName": "users_pkey",
           "unique": true,
           "primary": true
-        },
-        {
-          "columnNames": ["username"],
-          "composite": false,
-          "constraint": true,
-          "keyName": "users_username_unique",
-          "unique": true,
-          "primary": false
         }
       ],
       "checks": [],
