@@ -3,6 +3,7 @@ import { PostgreSqlDriver } from '@mikro-orm/postgresql';
 import { CommandsModule } from '@modules/commands/commands.module';
 import { ConfigModule } from '@modules/config/config.module';
 import { ConfigService } from '@modules/config/config.service';
+import { GameCoreModule } from '@modules/game-core/game-core.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { SessionsModule } from '@modules/sessions/sessions.module';
 import { UsersModule } from '@modules/users/users.module';
@@ -31,6 +32,7 @@ import { PasswordResetsModule } from './password-resets/password-resets.module';
     SessionsModule,
     UsersModule,
     PasswordResetsModule,
+    GameCoreModule,
   ],
   providers: [{ provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor }],
 })
