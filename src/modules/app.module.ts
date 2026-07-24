@@ -9,6 +9,7 @@ import { UsersModule } from '@modules/users/users.module';
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
+import { HealthController } from './health.controller';
 import { PasswordResetsModule } from './password-resets/password-resets.module';
 
 @Module({
@@ -32,6 +33,7 @@ import { PasswordResetsModule } from './password-resets/password-resets.module';
     UsersModule,
     PasswordResetsModule,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor }],
 })
 export class AppModule {}
