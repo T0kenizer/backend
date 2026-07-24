@@ -3,9 +3,11 @@ import * as Types from '@modules/redis/redis.types';
 import {
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { createClient } from 'redis';
 
 @Injectable()
@@ -28,6 +30,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.client.quit();
+  }
+
+  async setToken(
+    prefix: string,
+    value: string,
+    expiration: number = 3600,
+  ): Promise<string> {
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = this.hash(rawToken);
+    const key = `${prefix}${tokenHash}`;
+
+    await this.client.set(key, value, { EX: expiration });
+    return rawToken;
+  }
+
+  async getToken(prefix: string, rawToken: string): Promise<string> {
+    const tokenHash = this.hash(rawToken);
+    const key = `${prefix}${tokenHash}`;
+    const value = await this.client.getDel(key);
+
+    if (!value) throw new NotFoundException('Invalid or expired token');
+    return value;
+  }
+
+  private hash(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 
   getConnectionOptions(): { host: string; port: number } {

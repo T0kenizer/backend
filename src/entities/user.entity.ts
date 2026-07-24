@@ -15,7 +15,8 @@ import { UserRole } from '@tokenizer/shared/types';
 })
 @Index({
   name: 'idx_users_username',
-  properties: ['username'],
+  expression:
+    'CREATE UNIQUE INDEX "idx_users_username" ON "users" ("username") WHERE "deleted_at" IS NULL',
 })
 @Index({
   name: 'idx_users_display_name',
@@ -23,11 +24,13 @@ import { UserRole } from '@tokenizer/shared/types';
 })
 @Index({
   name: 'idx_users_email',
-  properties: ['email'],
+  expression:
+    'CREATE UNIQUE INDEX "idx_users_email" ON "users" ("email") WHERE "deleted_at" IS NULL',
 })
 @Index({
   name: 'idx_users_google_id',
-  properties: ['googleId'],
+  expression:
+    'CREATE UNIQUE INDEX "idx_users_google_id" ON "users" ("google_id") WHERE "deleted_at" IS NULL',
 })
 @Filter({
   name: 'notDeleted',
@@ -47,7 +50,6 @@ export class User {
     type: 'varchar',
     length: Constants.USERNAME_MAX_LENGTH,
     nullable: false,
-    unique: true,
   })
   username!: string;
 
@@ -64,7 +66,6 @@ export class User {
     type: 'varchar',
     length: Constants.EMAIL_MAX_LENGTH,
     nullable: false,
-    unique: true,
   })
   email!: string;
 
@@ -76,7 +77,6 @@ export class User {
     type: 'varchar',
     length: Constants.GOOGLE_ID_MAX_LENGTH,
     nullable: true,
-    unique: true,
   })
   googleId?: Opt<string>;
 

@@ -109,11 +109,13 @@ export class UsersService {
     return candidate;
   }
 
+  private validateUsername(username: string): void {
+    if (BANNED_USERNAMES.includes(username))
+      throw new BadRequestException(`Username "${username}" is not allowed`);
+  }
+
   public async create(data: RequiredEntityData<User>): Promise<User> {
-    if (BANNED_USERNAMES.includes(data.username))
-      throw new BadRequestException(
-        `Username "${data.username}" is not allowed`,
-      );
+    this.validateUsername(data.username);
 
     const existingUser = await Promise.all([
       this.usersRepository.findOne({ username: data.username }),
@@ -141,10 +143,57 @@ export class UsersService {
     return user;
   }
 
+  public async updateProfile(
+    user: User,
+    data: {
+      username?: string;
+      displayName?: string | null;
+      email?: string;
+      avatarUrl?: string | null;
+    },
+  ): Promise<User> {
+    const em = this.usersRepository.getEntityManager();
+    const managed = await this.usersRepository.findOneOrFail({
+      uuid: user.uuid,
+    });
+
+    if (data.username) this.validateUsername(data.username);
+    await this.updateUniqueField(managed, 'username', data.username);
+    await this.updateUniqueField(managed, 'email', data.email);
+
+    if (data.displayName !== undefined) {
+      managed.displayName = data.displayName ?? undefined;
+    }
+
+    // TODO: avatarUrl update with S3
+
+    await em.flush();
+    return managed;
+  }
+
   public async updatePassword(user: User, password: string): Promise<void> {
-    const entityManager = this.usersRepository.getEntityManager();
-    user.password = bcrypt.hashSync(password, HASH_ROUNDS);
-    await entityManager.flush();
+    const em = this.usersRepository.getEntityManager();
+    const managed = em.getReference(User, user.uuid);
+    managed.password = bcrypt.hashSync(password, HASH_ROUNDS);
+    await em.flush();
+  }
+
+  public async unlinkGoogle(user: User): Promise<User> {
+    const em = this.usersRepository.getEntityManager();
+    const managed = await this.usersRepository.findOneOrFail({
+      uuid: user.uuid,
+    });
+    managed.googleId = undefined;
+    await em.flush();
+    return managed;
+  }
+
+  public async softDelete(uuid: string): Promise<User> {
+    const user = await this.getUserByUuid(uuid);
+    const em = this.usersRepository.getEntityManager();
+    user.deletedAt = new Date();
+    await em.flush();
+    return user;
   }
 
   private static hashPassword(password: string): string {
@@ -153,5 +202,16 @@ export class UsersService {
 
   private static comparePassword(password: string, hash: string): boolean {
     return bcrypt.compareSync(password, hash);
+  }
+
+  private async updateUniqueField(
+    managed: User,
+    field: keyof Pick<User, 'username' | 'email'>,
+    value: string | undefined,
+  ): Promise<void> {
+    if (!value || value === managed[field]) return;
+    const existing = await this.usersRepository.findOne({ [field]: value });
+    if (existing) throw new ConflictException(`${field} is already in use`);
+    managed[field] = value;
   }
 }
