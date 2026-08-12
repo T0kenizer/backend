@@ -1,12 +1,22 @@
 import { ConfigService } from '@modules/config/config.service';
+import * as Constants from '@modules/mail/mail.constants';
+import { MailConsumer } from '@modules/mail/mail.consumer';
+import { MailService } from '@modules/mail/mail.service';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { join } from 'path';
-import { MailService } from './mail.service';
 
 @Module({
   imports: [
+    BullModule.registerQueue({
+      name: Constants.MAIL_QUEUE,
+      defaultJobOptions: {
+        removeOnComplete: { count: 100, age: 24 * 3600 },
+        removeOnFail: { count: 500, age: 7 * 24 * 3600 },
+      },
+    }),
     MailerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -39,7 +49,7 @@ import { MailService } from './mail.service';
       }),
     }),
   ],
-  providers: [MailService],
+  providers: [MailConsumer, MailService],
   exports: [MailService],
 })
 export class MailModule {}
