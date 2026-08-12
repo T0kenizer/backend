@@ -5,7 +5,9 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { RedisService } from './redis/redis.service';
+import { RedisCacheService } from './redis/services/redis-cache.service';
+import { RedisQueueService } from './redis/services/redis-queue.service';
+import { RedisService } from './redis/services/redis.service';
 
 @Controller('health')
 export class HealthController {
@@ -14,6 +16,8 @@ export class HealthController {
   constructor(
     private readonly em: EntityManager,
     private readonly redisService: RedisService,
+    private readonly redisQueueService: RedisQueueService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   @Get()
@@ -31,26 +35,31 @@ export class HealthController {
         ),
       ]);
 
-    const [db, redis] = await Promise.allSettled([
-      timeout(this.em.getConnection().execute('SELECT 1')),
-      timeout(this.redisService.client.ping()),
-    ]);
+    const checks: { name: string; probe: Promise<unknown> }[] = [
+      { name: 'database', probe: this.em.getConnection().execute('SELECT 1') },
+      { name: 'Redis (core)', probe: this.redisService.client.ping() },
+      { name: 'Redis (queue)', probe: this.redisQueueService.client.ping() },
+      { name: 'Redis (cache)', probe: this.redisCacheService.client.ping() },
+    ];
 
-    if (db.status === 'rejected') {
-      const reason: unknown = db.reason;
-      this.logger.error(
-        'Readiness check failed: database is unavailable',
-        reason instanceof Error ? reason.stack : String(reason),
-      );
-      throw new ServiceUnavailableException();
-    }
+    const results = await Promise.allSettled(
+      checks.map(({ probe }) => timeout(probe)),
+    );
 
-    if (redis.status === 'rejected') {
-      const reason: unknown = redis.reason;
-      this.logger.error(
-        'Readiness check failed: Redis is unavailable',
-        reason instanceof Error ? reason.stack : String(reason),
-      );
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected'
+        ? [{ name: checks[index].name, reason: result.reason as unknown }]
+        : [],
+    );
+
+    if (failures.length > 0) {
+      for (const { name, reason } of failures) {
+        this.logger.error(
+          `Readiness check failed: ${name} is unavailable`,
+          reason instanceof Error ? reason.stack : String(reason),
+        );
+      }
+
       throw new ServiceUnavailableException();
     }
   }
