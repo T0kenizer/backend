@@ -1,5 +1,7 @@
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { PostgreSqlDriver } from '@mikro-orm/postgresql';
+import { AccountConfirmationsModule } from '@modules/account-confirmations/account-confirmations.module';
+import { AccountDeletionsModule } from '@modules/account-deletions/account-deletions.module';
 import { CommandsModule } from '@modules/commands/commands.module';
 import { ConfigModule } from '@modules/config/config.module';
 import { ConfigService } from '@modules/config/config.service';
@@ -43,6 +45,8 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     SessionsModule,
     UsersModule,
     PasswordResetsModule,
+    AccountDeletionsModule,
+    AccountConfirmationsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor }],
