@@ -1,4 +1,4 @@
-import { PasswordResetToken } from '@entities/password-reset-token.entity';
+import { PasswordResetToken } from '@entities/tokens/password-reset-token.entity';
 import { User } from '@entities/user.entity';
 import { EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
