@@ -1,6 +1,6 @@
 import { LoggingInterceptor } from '@interceptors/logging.interceptor';
 import { ConfigService } from '@modules/config/config.service';
-import { RedisService } from '@modules/redis/redis.service';
+import { RedisService } from '@modules/redis/services/redis.service';
 import { AUTH_COOKIE_NAME } from '@modules/sessions/sessions.constants';
 import {
   ArgumentsHost,

@@ -20,6 +20,12 @@ export const configSchema = z.object({
   REDIS_HOST: z.string().nonempty(),
   REDIS_PORT: z.coerce.number().default(6379),
 
+  REDIS_QUEUE_HOST: z.string().nonempty(),
+  REDIS_QUEUE_PORT: z.coerce.number().default(6379),
+
+  REDIS_CACHE_HOST: z.string().nonempty(),
+  REDIS_CACHE_PORT: z.coerce.number().default(6379),
+
   SECRET_KEY: z.string().nonempty(),
 
   GOOGLE_CLIENT_ID: z.string().nonempty(),
