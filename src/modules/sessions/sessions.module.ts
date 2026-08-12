@@ -16,5 +16,6 @@ import { PassportModule } from '@nestjs/passport';
     LocalStrategy,
     SessionsService,
   ],
+  exports: [SessionsService],
 })
 export class SessionsModule {}

@@ -120,4 +120,11 @@ export class User {
     nullable: true,
   })
   deletedAt?: Opt<Date>;
+
+  @Property({
+    name: 'confirmed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
+  confirmedAt?: Opt<Date>;
 }

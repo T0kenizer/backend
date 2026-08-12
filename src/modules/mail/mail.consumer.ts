@@ -1,3 +1,5 @@
+import { TOKEN_TTL_MS as ACCOUNT_CONFIRMATION_TOKEN_TTL_MS } from '@modules/account-confirmations/account-confirmations.constants';
+import { TOKEN_TTL_MS as ACCOUNT_DELETION_TOKEN_TTL_MS } from '@modules/account-deletions/account-deletions.constants';
 import * as Constants from '@modules/mail/mail.constants';
 import { MailService } from '@modules/mail/mail.service';
 import * as Types from '@modules/mail/mail.types';
@@ -24,8 +26,57 @@ export class MailConsumer extends WorkerHost {
           break;
         }
 
-        const { email, resetUrl } = job.data;
+        const { email, resetUrl } = job.data as Types.PasswordResetJobData;
         await this.mailService.deliverPasswordReset(email, resetUrl);
+        break;
+      }
+      case Constants.MAIL_JOB_ACCOUNT_DELETION: {
+        if (Date.now() > job.timestamp + ACCOUNT_DELETION_TOKEN_TTL_MS) {
+          this.logger.warn(
+            `Mail job "${job.name}" (${job.id}) outlived the deletion token, skipping`,
+          );
+          break;
+        }
+
+        const { email, deletionUrl } = job.data as Types.AccountDeletionJobData;
+        await this.mailService.deliverAccountDeletion(email, deletionUrl);
+        break;
+      }
+      case Constants.MAIL_JOB_ACCOUNT_CONFIRMATION: {
+        if (Date.now() > job.timestamp + ACCOUNT_CONFIRMATION_TOKEN_TTL_MS) {
+          this.logger.warn(
+            `Mail job "${job.name}" (${job.id}) outlived the confirmation token, skipping`,
+          );
+          break;
+        }
+
+        const { email, confirmationUrl } =
+          job.data as Types.AccountConfirmationJobData;
+        await this.mailService.deliverAccountConfirmation(
+          email,
+          confirmationUrl,
+        );
+        break;
+      }
+      // Security notices carry no token, so there is nothing to outlive.
+      case Constants.MAIL_JOB_ACCOUNT_CONFIRMED: {
+        const { email } = job.data;
+        await this.mailService.deliverAccountConfirmed(email);
+        break;
+      }
+      case Constants.MAIL_JOB_PASSWORD_CHANGED: {
+        const { email } = job.data;
+        await this.mailService.deliverPasswordChanged(email);
+        break;
+      }
+      case Constants.MAIL_JOB_ACCOUNT_DELETED: {
+        const { email } = job.data;
+        await this.mailService.deliverAccountDeleted(email);
+        break;
+      }
+      case Constants.MAIL_JOB_EMAIL_CHANGED: {
+        const { email, newEmail } = job.data as Types.EmailChangedJobData;
+        await this.mailService.deliverEmailChanged(email, newEmail);
         break;
       }
       default:
