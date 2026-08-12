@@ -26,11 +26,11 @@
   },
   "lint-staged": {
     "*.{js,ts}": [
-      "npm run format",
-      "npm run lint:fix"
+      "prettier --write",
+      "eslint --fix"
     ],
     "*.{json,md,yml,yaml}": [
-      "npm run format"
+      "prettier --write"
     ]
   },
   "dependencies": {
@@ -39,14 +39,16 @@
     "@mikro-orm/nestjs": "^6.1.1",
     "@mikro-orm/postgresql": "^6.6.7",
     "@nestjs-modules/mailer": "^2.3.6",
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.4",
-    "@tokenizer/shared": "github:T0kenizer/shared#main",
+    "@tokenizer/shared": "github:T0kenizer/shared#feature/profile-2",
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.1.0",
     "connect-redis": "^9.0.0",
     "express-session": "^1.19.0",
     "nest-commander": "^3.20.1",
