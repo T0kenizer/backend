@@ -9,7 +9,9 @@ import {
   Param,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
 
 @Controller('account-confirmations')
@@ -24,15 +26,18 @@ export class AccountConfirmationsController {
     return this.accountConfirmationsService.requestConfirmation(data.email);
   }
 
+  // No AuthenticatedGuard here: confirmation must work for freshly signed-up
+  // users without a session. The service still rejects tokens that belong to
+  // someone other than the connected user, when there is one.
   @Get(':token')
   @ZodSerializerDto(DTOs.ValidateConfirmationTokenResponse)
-  public validateToken(@Param('token') token: string) {
-    return this.accountConfirmationsService.validateToken(token);
+  public validateToken(@Param('token') token: string, @Req() req: Request) {
+    return this.accountConfirmationsService.validateToken(token, req.user);
   }
 
   @Patch(':token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  public applyConfirmation(@Param('token') token: string) {
-    return this.accountConfirmationsService.applyConfirmation(token);
+  public applyConfirmation(@Param('token') token: string, @Req() req: Request) {
+    return this.accountConfirmationsService.applyConfirmation(token, req.user);
   }
 }
