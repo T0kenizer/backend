@@ -17,7 +17,9 @@ export class SessionSerializer extends PassportSerializer {
     uuid: string,
     done: (err: unknown, user: User | false) => void,
   ): Promise<void> {
-    const user = await this.em.fork().findOne(User, { uuid });
+    const user = await this.em
+      .fork()
+      .findOne(User, { uuid }, { populate: ['avatar'] });
     done(null, user ?? false);
   }
 }
