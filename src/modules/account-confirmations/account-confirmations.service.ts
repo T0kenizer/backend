@@ -7,6 +7,7 @@ import { ConfigService } from '@modules/config/config.service';
 import { MailService } from '@modules/mail/mail.service';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -64,14 +65,20 @@ export class AccountConfirmationsService {
     await this.sendConfirmation(user);
   }
 
-  public async validateToken(raw: string): Promise<{ email: string }> {
-    const token = await this.findValidToken(raw);
+  public async validateToken(
+    raw: string,
+    currentUser?: User,
+  ): Promise<{ email: string }> {
+    const token = await this.findValidToken(raw, currentUser);
 
     return { email: token.user.email };
   }
 
-  public async applyConfirmation(raw: string): Promise<void> {
-    const token = await this.findValidToken(raw);
+  public async applyConfirmation(
+    raw: string,
+    currentUser?: User,
+  ): Promise<void> {
+    const token = await this.findValidToken(raw, currentUser);
     const em = this.tokenRepository.getEntityManager();
     const { email } = token.user;
 
@@ -91,7 +98,10 @@ export class AccountConfirmationsService {
     }
   }
 
-  private async findValidToken(raw: string): Promise<AccountConfirmationToken> {
+  private async findValidToken(
+    raw: string,
+    currentUser?: User,
+  ): Promise<AccountConfirmationToken> {
     const tokenHash = this.hash(raw);
 
     const token = await this.tokenRepository.findOne(
@@ -103,6 +113,12 @@ export class AccountConfirmationsService {
 
     if (token.expiresAt < new Date())
       throw new BadRequestException('Token has expired');
+
+    // Confirmation also happens right after signup, before any session exists,
+    // so the endpoint stays public; but when someone IS logged in, the token
+    // must be theirs.
+    if (currentUser && token.user.uuid !== currentUser.uuid)
+      throw new ForbiddenException('Token does not belong to the current user');
 
     return token;
   }

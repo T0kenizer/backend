@@ -1,3 +1,7 @@
+import {
+  FieldBadRequestException,
+  FieldConflictException,
+} from '@/exceptions/field.exceptions';
 import { User } from '@entities/user.entity';
 import { EntityRepository, RequiredEntityData } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
@@ -5,13 +9,7 @@ import { AccountConfirmationsService } from '@modules/account-confirmations/acco
 import { MailService } from '@modules/mail/mail.service';
 import { BANNED_USERNAMES } from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PartialUpdateUserData } from '@tokenizer/shared/types';
 import bcrypt from 'bcrypt';
 import slugify from 'slugify';
@@ -121,9 +119,9 @@ export class UsersService {
 
   public async create(data: RequiredEntityData<User>): Promise<User> {
     if (BANNED_USERNAMES.includes(data.username))
-      throw new BadRequestException(
-        `Username "${data.username}" is not allowed`,
-      );
+      throw new FieldBadRequestException({
+        username: `Username "${data.username}" is not allowed`,
+      });
 
     const existingUser = await Promise.all([
       this.usersRepository.findOne({ username: data.username }),
@@ -131,11 +129,13 @@ export class UsersService {
     ]);
 
     if (existingUser[0])
-      throw new ConflictException(
-        `Username ${data.username} is already in use`,
-      );
+      throw new FieldConflictException({
+        username: `Username ${data.username} is already in use`,
+      });
     if (existingUser[1])
-      throw new ConflictException(`Email ${data.email} is already in use`);
+      throw new FieldConflictException({
+        email: `Email ${data.email} is already in use`,
+      });
 
     const hashedPassword = UsersService.hashPassword(data.password as string);
 
@@ -161,17 +161,17 @@ export class UsersService {
 
     if (data.username !== undefined && data.username !== user.username) {
       if (BANNED_USERNAMES.includes(data.username))
-        throw new BadRequestException(
-          `Username "${data.username}" is not allowed`,
-        );
+        throw new FieldBadRequestException({
+          username: `Username "${data.username}" is not allowed`,
+        });
 
       const existing = await this.usersRepository.findOne({
         username: data.username,
       });
       if (existing)
-        throw new ConflictException(
-          `Username ${data.username} is already in use`,
-        );
+        throw new FieldConflictException({
+          username: `Username ${data.username} is already in use`,
+        });
 
       user.username = data.username;
     }
@@ -185,7 +185,9 @@ export class UsersService {
         email: data.email,
       });
       if (existing)
-        throw new ConflictException(`Email ${data.email} is already in use`);
+        throw new FieldConflictException({
+          email: `Email ${data.email} is already in use`,
+        });
 
       user.email = data.email as string;
       // The new address is unproven until its owner clicks the link.
