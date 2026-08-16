@@ -1,3 +1,4 @@
+import { DatabaseExceptionInterceptor } from '@interceptors/database-exception.interceptor';
 import { LoggingInterceptor } from '@interceptors/logging.interceptor';
 import { ConfigService } from '@modules/config/config.service';
 import { RedisService } from '@modules/redis/services/redis.service';
@@ -40,12 +41,18 @@ class HttpExceptionFilter implements ExceptionFilter {
 }
 
 export function setupApp(app: INestApplication): INestApplication {
-  app.useGlobalPipes(new ZodValidationPipe());
-  app.useGlobalFilters(new HttpExceptionFilter(app.get(HttpAdapterHost)));
-  app.useGlobalInterceptors(new LoggingInterceptor());
-
   const configService = app.get(ConfigService);
   const redisService = app.get(RedisService);
+  const isDev = configService.get('NODE_ENV') === 'development';
+
+  app.useGlobalPipes(new ZodValidationPipe());
+  app.useGlobalFilters(new HttpExceptionFilter(app.get(HttpAdapterHost)));
+  // DatabaseExceptionInterceptor is registered last so its error mapping runs
+  // first, letting LoggingInterceptor log the mapped 409 instead of a raw 500.
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(isDev),
+    new DatabaseExceptionInterceptor(),
+  );
 
   // TLS is terminated by Cloudflare; internally everything is plain HTTP over
   // cloudflared -> Traefik -> Node (two proxy hops). Trusting them lets
