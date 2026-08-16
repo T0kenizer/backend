@@ -1,7 +1,8 @@
 import { User } from '@entities/user.entity';
-import { EntityRepository, RequiredEntityData } from '@mikro-orm/core';
+import { EntityRepository, ref, RequiredEntityData } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { AccountConfirmationsService } from '@modules/account-confirmations/account-confirmations.service';
+import { FilesService } from '@modules/files/files.service';
 import { MailService } from '@modules/mail/mail.service';
 import { BANNED_USERNAMES } from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
@@ -12,7 +13,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PartialUpdateUserData } from '@tokenizer/shared/types';
+import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
 import bcrypt from 'bcrypt';
 import slugify from 'slugify';
 
@@ -27,6 +28,7 @@ export class UsersService {
     private readonly usersRepository: EntityRepository<User>,
     private readonly mailService: MailService,
     private readonly accountConfirmationsService: AccountConfirmationsService,
+    private readonly filesService: FilesService,
   ) {}
 
   public async validateUser(
@@ -62,20 +64,11 @@ export class UsersService {
     const byGoogleId = await this.usersRepository.findOne({
       googleId: data.googleId,
     });
-    if (byGoogleId) {
-      let dirty = false;
-      if (data.avatarUrl && byGoogleId.avatarUrl !== data.avatarUrl) {
-        byGoogleId.avatarUrl = data.avatarUrl;
-        dirty = true;
-      }
-      if (dirty) await em.flush();
-      return byGoogleId;
-    }
+    if (byGoogleId) return byGoogleId;
 
     const byEmail = await this.usersRepository.findOne({ email: data.email });
     if (byEmail) {
       byEmail.googleId = data.googleId;
-      if (data.avatarUrl) byEmail.avatarUrl = data.avatarUrl;
       if (!byEmail.displayName && data.displayName)
         byEmail.displayName = data.displayName;
       await em.flush();
@@ -90,7 +83,6 @@ export class UsersService {
       username,
       email: data.email,
       displayName: data.displayName,
-      avatarUrl: data.avatarUrl,
       googleId: data.googleId,
       // Google already vetted the address, so there is nothing left to confirm.
       confirmedAt: new Date(),
@@ -194,8 +186,26 @@ export class UsersService {
 
     if (data.displayName !== undefined)
       user.displayName = data.displayName ?? undefined;
-    if (data.avatarUrl !== undefined)
-      user.avatarUrl = data.avatarUrl ?? undefined;
+
+    if (data.avatar !== undefined) {
+      if (data.avatar === null) {
+        user.avatar = undefined;
+      } else {
+        const file = await this.filesService.findFileByUuid(data.avatar);
+
+        // Owned-only keeps a user from pointing at someone else's upload.
+        if (!file || file.createdBy?.uuid !== user.uuid)
+          throw new BadRequestException(
+            'Avatar must reference a file uploaded by the user',
+          );
+
+        const status: FileStatus = file.status;
+        if (status !== FileStatus.Ready)
+          throw new BadRequestException('Avatar file content is not ready');
+
+        user.avatar = ref(file);
+      }
+    }
 
     await em.flush();
 

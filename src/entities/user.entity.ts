@@ -1,33 +1,20 @@
+import { File } from '@entities/file.entity';
 import {
   Entity,
   Enum,
   Filter,
   Index,
+  ManyToOne,
   PrimaryKey,
   Property,
   type Opt,
+  type Ref,
 } from '@mikro-orm/core';
 import * as Constants from '@tokenizer/shared/constants/users.constants';
 import { UserRole } from '@tokenizer/shared/types';
 
 @Entity({
   tableName: 'users',
-})
-@Index({
-  name: 'idx_users_username',
-  properties: ['username'],
-})
-@Index({
-  name: 'idx_users_display_name',
-  properties: ['displayName'],
-})
-@Index({
-  name: 'idx_users_email',
-  properties: ['email'],
-})
-@Index({
-  name: 'idx_users_google_id',
-  properties: ['googleId'],
 })
 @Filter({
   name: 'notDeleted',
@@ -49,6 +36,7 @@ export class User {
     nullable: false,
     unique: true,
   })
+  @Index({ name: 'idx_users_username' })
   username!: string;
 
   @Property({
@@ -57,6 +45,7 @@ export class User {
     length: Constants.DISPLAY_NAME_MAX_LENGTH,
     nullable: true,
   })
+  @Index({ name: 'idx_users_display_name' })
   displayName?: Opt<string>;
 
   @Property({
@@ -66,6 +55,7 @@ export class User {
     nullable: false,
     unique: true,
   })
+  @Index({ name: 'idx_users_email' })
   email!: string;
 
   @Property({ name: 'password', type: 'varchar', nullable: true })
@@ -78,15 +68,17 @@ export class User {
     nullable: true,
     unique: true,
   })
+  @Index({ name: 'idx_users_google_id' })
   googleId?: Opt<string>;
 
-  @Property({
-    name: 'avatar_url',
-    type: 'varchar',
-    length: Constants.AVATAR_URL_MAX_LENGTH,
+  @ManyToOne(() => File, {
+    name: 'avatar_uuid',
     nullable: true,
+    deleteRule: 'set null',
+    ref: true,
   })
-  avatarUrl?: Opt<string>;
+  @Index({ name: 'idx_users_avatar_uuid' })
+  avatar?: Ref<File>;
 
   @Enum({
     name: 'role',
