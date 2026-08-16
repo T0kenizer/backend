@@ -6,7 +6,6 @@ import * as Types from '@modules/mail/mail.types';
 import { TOKEN_TTL_MS as PASSWORD_RESET_TOKEN_TTL_MS } from '@modules/password-resets/password-resets.constants';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
 
 @Processor(Constants.MAIL_QUEUE)
 export class MailConsumer extends WorkerHost {
@@ -16,9 +15,9 @@ export class MailConsumer extends WorkerHost {
     super();
   }
 
-  public async process(job: Job<Types.MailJobData>): Promise<void> {
+  public async process(job: Types.MailQueueJob): Promise<void> {
     switch (job.name) {
-      case Constants.MAIL_JOB_PASSWORD_RESET: {
+      case Types.MailJob.PasswordReset: {
         if (Date.now() > job.timestamp + PASSWORD_RESET_TOKEN_TTL_MS) {
           this.logger.warn(
             `Mail job "${job.name}" (${job.id}) outlived the reset token, skipping`,
@@ -26,11 +25,11 @@ export class MailConsumer extends WorkerHost {
           break;
         }
 
-        const { email, resetUrl } = job.data as Types.PasswordResetJobData;
+        const { email, resetUrl } = job.data;
         await this.mailService.deliverPasswordReset(email, resetUrl);
         break;
       }
-      case Constants.MAIL_JOB_ACCOUNT_DELETION: {
+      case Types.MailJob.AccountDeletion: {
         if (Date.now() > job.timestamp + ACCOUNT_DELETION_TOKEN_TTL_MS) {
           this.logger.warn(
             `Mail job "${job.name}" (${job.id}) outlived the deletion token, skipping`,
@@ -38,11 +37,11 @@ export class MailConsumer extends WorkerHost {
           break;
         }
 
-        const { email, deletionUrl } = job.data as Types.AccountDeletionJobData;
+        const { email, deletionUrl } = job.data;
         await this.mailService.deliverAccountDeletion(email, deletionUrl);
         break;
       }
-      case Constants.MAIL_JOB_ACCOUNT_CONFIRMATION: {
+      case Types.MailJob.AccountConfirmation: {
         if (Date.now() > job.timestamp + ACCOUNT_CONFIRMATION_TOKEN_TTL_MS) {
           this.logger.warn(
             `Mail job "${job.name}" (${job.id}) outlived the confirmation token, skipping`,
@@ -50,8 +49,7 @@ export class MailConsumer extends WorkerHost {
           break;
         }
 
-        const { email, confirmationUrl } =
-          job.data as Types.AccountConfirmationJobData;
+        const { email, confirmationUrl } = job.data;
         await this.mailService.deliverAccountConfirmation(
           email,
           confirmationUrl,
@@ -59,33 +57,35 @@ export class MailConsumer extends WorkerHost {
         break;
       }
       // Security notices carry no token, so there is nothing to outlive.
-      case Constants.MAIL_JOB_ACCOUNT_CONFIRMED: {
+      case Types.MailJob.AccountConfirmed: {
         const { email } = job.data;
         await this.mailService.deliverAccountConfirmed(email);
         break;
       }
-      case Constants.MAIL_JOB_PASSWORD_CHANGED: {
+      case Types.MailJob.PasswordChanged: {
         const { email } = job.data;
         await this.mailService.deliverPasswordChanged(email);
         break;
       }
-      case Constants.MAIL_JOB_ACCOUNT_DELETED: {
+      case Types.MailJob.AccountDeleted: {
         const { email } = job.data;
         await this.mailService.deliverAccountDeleted(email);
         break;
       }
-      case Constants.MAIL_JOB_EMAIL_CHANGED: {
-        const { email, newEmail } = job.data as Types.EmailChangedJobData;
+      case Types.MailJob.EmailChanged: {
+        const { email, newEmail } = job.data;
         await this.mailService.deliverEmailChanged(email, newEmail);
         break;
       }
       default:
-        throw new Error(`Unknown mail job "${job.name}"`);
+        throw new Error(
+          `Unknown mail job "${(job satisfies never as Types.MailQueueJob).name}"`,
+        );
     }
   }
 
   @OnWorkerEvent('failed')
-  public onFailed(job: Job<Types.MailJobData> | undefined, error: Error): void {
+  public onFailed(job: Optional<Types.MailQueueJob>, error: Error): void {
     // BullMQ retries the job, so this fires on every attempt, not just the last.
     this.logger.error(
       `Mail job "${job?.name}" (${job?.id}) failed on attempt ${job?.attemptsMade}`,
