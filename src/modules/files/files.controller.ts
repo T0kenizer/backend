@@ -30,6 +30,8 @@ import {
 import { FileStatus } from '@tokenizer/shared/types';
 import type { Request, Response } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
+// Loads the `Express.Multer` global augmentation shipped by @types/multer.
+import 'multer';
 
 const ALLOWED_MIME_TYPES_REGEX = new RegExp(
   `^(${ALLOWED_MIME_TYPES.join('|')})$`,

@@ -17,6 +17,8 @@ import { FileStatus, FileUploadMode } from '@tokenizer/shared/types';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import sharp from 'sharp';
+// Loads the `Express.Multer` global augmentation shipped by @types/multer.
+import 'multer';
 
 @Injectable()
 export class FilesService {
