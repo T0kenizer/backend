@@ -3,42 +3,40 @@ import * as Types from '@modules/mail/mail.types';
 import { MailerService } from '@nestjs-modules/mailer';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
-import { Queue } from 'bullmq';
+import { JobsOptions } from 'bullmq';
 
 @Injectable()
 export class MailService {
   constructor(
     private readonly mailerService: MailerService,
     @InjectQueue(Constants.MAIL_QUEUE)
-    private readonly queue: Queue<Types.MailJobData>,
+    private readonly queue: Types.MailQueue,
   ) {}
+
+  private async enqueue<Name extends Types.MailJob>(
+    name: Name,
+    data: Types.MailJobData[Name],
+    opts?: JobsOptions,
+  ): Promise<void> {
+    await this.queue.add(name, data, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      ...opts,
+    });
+  }
 
   public async sendPasswordReset(
     email: string,
     resetUrl: string,
   ): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_PASSWORD_RESET,
-      { email, resetUrl },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.PasswordReset, { email, resetUrl });
   }
 
   public async sendAccountDeletion(
     email: string,
     deletionUrl: string,
   ): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_ACCOUNT_DELETION,
-      { email, deletionUrl },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.AccountDeletion, { email, deletionUrl });
   }
 
   public deliverAccountDeletion(email: string, deletionUrl: string) {
@@ -71,14 +69,10 @@ export class MailService {
     email: string,
     confirmationUrl: string,
   ): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_ACCOUNT_CONFIRMATION,
-      { email, confirmationUrl } satisfies Types.AccountConfirmationJobData,
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.AccountConfirmation, {
+      email,
+      confirmationUrl,
+    });
   }
 
   public deliverAccountConfirmation(email: string, confirmationUrl: string) {
@@ -95,14 +89,7 @@ export class MailService {
   }
 
   public async sendAccountConfirmed(email: string): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_ACCOUNT_CONFIRMED,
-      { email } satisfies Types.AccountConfirmedJobData,
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.AccountConfirmed, { email });
   }
 
   public deliverAccountConfirmed(email: string) {
@@ -118,14 +105,7 @@ export class MailService {
   }
 
   public async sendPasswordChanged(email: string): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_PASSWORD_CHANGED,
-      { email } satisfies Types.PasswordChangedJobData,
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.PasswordChanged, { email });
   }
 
   public deliverPasswordChanged(email: string) {
@@ -144,14 +124,7 @@ export class MailService {
     email: string,
     newEmail: string,
   ): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_EMAIL_CHANGED,
-      { email, newEmail } satisfies Types.EmailChangedJobData,
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.EmailChanged, { email, newEmail });
   }
 
   public deliverEmailChanged(email: string, newEmail: string) {
@@ -168,14 +141,7 @@ export class MailService {
   }
 
   public async sendAccountDeleted(email: string): Promise<void> {
-    await this.queue.add(
-      Constants.MAIL_JOB_ACCOUNT_DELETED,
-      { email } satisfies Types.AccountDeletedJobData,
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
+    await this.enqueue(Types.MailJob.AccountDeleted, { email });
   }
 
   public deliverAccountDeleted(email: string) {

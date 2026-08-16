@@ -1,12 +1,14 @@
-import {
-  MAIL_JOB_ACCOUNT_CONFIRMATION,
-  MAIL_JOB_ACCOUNT_CONFIRMED,
-  MAIL_JOB_ACCOUNT_DELETED,
-  MAIL_JOB_ACCOUNT_DELETION,
-  MAIL_JOB_EMAIL_CHANGED,
-  MAIL_JOB_PASSWORD_CHANGED,
-  MAIL_JOB_PASSWORD_RESET,
-} from '@modules/mail/mail.constants';
+import { Job, Queue } from 'bullmq';
+
+export enum MailJob {
+  AccountConfirmation = 'account-confirmation',
+  AccountConfirmed = 'account-confirmed',
+  AccountDeleted = 'account-deleted',
+  AccountDeletion = 'account-deletion',
+  EmailChanged = 'email-changed',
+  PasswordChanged = 'password-changed',
+  PasswordReset = 'password-reset',
+}
 
 export interface PasswordResetJobData {
   email: string;
@@ -36,23 +38,22 @@ export interface AccountConfirmedJobData {
 }
 
 export interface EmailChangedJobData {
-  /** The address the notice goes to, i.e. the one being replaced. */
   email: string;
   newEmail: string;
 }
 
-export interface MailJobDataMap {
-  [MAIL_JOB_PASSWORD_RESET]: PasswordResetJobData;
-  [MAIL_JOB_ACCOUNT_DELETION]: AccountDeletionJobData;
-  [MAIL_JOB_PASSWORD_CHANGED]: PasswordChangedJobData;
-  [MAIL_JOB_ACCOUNT_DELETED]: AccountDeletedJobData;
-  [MAIL_JOB_ACCOUNT_CONFIRMATION]: AccountConfirmationJobData;
-  [MAIL_JOB_ACCOUNT_CONFIRMED]: AccountConfirmedJobData;
-  [MAIL_JOB_EMAIL_CHANGED]: EmailChangedJobData;
-}
-
-export type MailJobName = keyof MailJobDataMap;
-
 export type MailJobData = {
-  [Name in MailJobName]: MailJobDataMap[Name];
-}[MailJobName];
+  [MailJob.AccountConfirmation]: AccountConfirmationJobData;
+  [MailJob.AccountConfirmed]: AccountConfirmedJobData;
+  [MailJob.AccountDeleted]: AccountDeletedJobData;
+  [MailJob.AccountDeletion]: AccountDeletionJobData;
+  [MailJob.EmailChanged]: EmailChangedJobData;
+  [MailJob.PasswordChanged]: PasswordChangedJobData;
+  [MailJob.PasswordReset]: PasswordResetJobData;
+};
+
+export type MailQueueJob = {
+  [Name in MailJob]: Job<MailJobData[Name], void, Name>;
+}[MailJob];
+
+export type MailQueue = Queue<MailJobData[MailJob], void, MailJob>;

@@ -72,7 +72,7 @@ export class AccountDeletionsService {
     deletedUser.googleId = undefined;
     deletedUser.password = undefined;
     deletedUser.displayName = undefined;
-    deletedUser.avatarUrl = undefined;
+    deletedUser.avatar = undefined;
     token.usedAt = new Date();
     await em.flush();
 

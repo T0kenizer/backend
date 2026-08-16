@@ -23,11 +23,11 @@ export class AccessGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   public canActivate(context: ExecutionContext): boolean {
-    const roles = this.reflector.getAllAndOverride<UserRole[] | undefined>(
+    const roles = this.reflector.getAllAndOverride<Optional<UserRole[]>>(
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
     );
-    const selfParam = this.reflector.getAllAndOverride<string | undefined>(
+    const selfParam = this.reflector.getAllAndOverride<Optional<string>>(
       SELF_PARAM_KEY,
       [context.getHandler(), context.getClass()],
     );
