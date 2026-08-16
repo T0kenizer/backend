@@ -34,7 +34,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["node", "jest"]
+    "types": ["node", "jest", "multer"]
   },
   "ts-node": {
     "files": true

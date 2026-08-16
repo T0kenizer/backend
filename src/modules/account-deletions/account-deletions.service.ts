@@ -63,7 +63,16 @@ export class AccountDeletionsService {
     const em = this.tokenRepository.getEntityManager();
     const { email } = token.user;
 
-    token.user.deletedAt = new Date();
+    // Anonymize rather than just flag: it scrubs personal data and frees the
+    // unique username/email/google_id columns so the person can sign up again.
+    const deletedUser = token.user;
+    deletedUser.deletedAt = new Date();
+    deletedUser.username = `deleted_${deletedUser.uuid}`;
+    deletedUser.email = `deleted_${deletedUser.uuid}@deleted.invalid`;
+    deletedUser.googleId = undefined;
+    deletedUser.password = undefined;
+    deletedUser.displayName = undefined;
+    deletedUser.avatar = undefined;
     token.usedAt = new Date();
     await em.flush();
 

@@ -5,6 +5,7 @@ import { AccountDeletionsModule } from '@modules/account-deletions/account-delet
 import { CommandsModule } from '@modules/commands/commands.module';
 import { ConfigModule } from '@modules/config/config.module';
 import { ConfigService } from '@modules/config/config.service';
+import { FilesModule } from '@modules/files/files.module';
 import { HealthController } from '@modules/health.controller';
 import { MailModule } from '@modules/mail/mail.module';
 import { PasswordResetsModule } from '@modules/password-resets/password-resets.module';
@@ -44,6 +45,7 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     RedisModule,
     SessionsModule,
     UsersModule,
+    FilesModule,
     PasswordResetsModule,
     AccountDeletionsModule,
     AccountConfirmationsModule,

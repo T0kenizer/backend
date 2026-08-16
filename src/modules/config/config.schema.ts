@@ -28,6 +28,15 @@ export const configSchema = z.object({
 
   SECRET_KEY: z.string().nonempty(),
 
+  FIREBASE_PROJECT_ID: z.string().nonempty(),
+  FIREBASE_CLIENT_EMAIL: z.string().nonempty(),
+  FIREBASE_PRIVATE_KEY: z
+    .string()
+    .nonempty()
+    // Compose/env files escape newlines in the PEM key, restore them.
+    .transform((key) => key.replace(/\\n/g, '\n')),
+  FIREBASE_STORAGE_BUCKET: z.string().nonempty(),
+
   GOOGLE_CLIENT_ID: z.string().nonempty(),
   GOOGLE_CLIENT_SECRET: z.string().nonempty(),
   GOOGLE_CALLBACK_URL: z.url(),

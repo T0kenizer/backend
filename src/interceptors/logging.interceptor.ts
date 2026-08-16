@@ -4,7 +4,7 @@ import type {
   ExecutionContext,
   NestInterceptor,
 } from '@nestjs/common';
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import { catchError, Observable, tap, throwError } from 'rxjs';
 
@@ -19,6 +19,8 @@ const MIN_LOGGING_DURATION_MS = 250;
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
 
+  constructor(private readonly debug = false) {}
+
   intercept(
     context: ExecutionContext,
     next: CallHandler<unknown>,
@@ -29,7 +31,7 @@ export class LoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         const duration = Date.now() - start;
-        if (duration < MIN_LOGGING_DURATION_MS) return;
+        if (!this.debug && duration < MIN_LOGGING_DURATION_MS) return;
         const user: Optional<User> = request.user;
 
         this.logger.log(
@@ -44,7 +46,23 @@ export class LoggingInterceptor implements NestInterceptor {
         this.logger.error(
           `${request.method} ${request.originalUrl} ${duration}ms - ${status} - requested by ${user?.email || 'ANONYMOUS'}`,
         );
-        if (status >= 500) this.logger.error(error);
+        if (status >= 500) {
+          this.logger.error(error);
+
+          if (this.debug) {
+            return throwError(
+              () =>
+                new HttpException(
+                  {
+                    statusCode: status,
+                    message: error.message,
+                    error: error.stack,
+                  },
+                  status,
+                ),
+            );
+          }
+        }
         return throwError(() => error);
       }),
     );
