@@ -1,6 +1,7 @@
+import { DatabaseExceptionInterceptor } from '@interceptors/database-exception.interceptor';
 import { LoggingInterceptor } from '@interceptors/logging.interceptor';
 import { ConfigService } from '@modules/config/config.service';
-import { RedisService } from '@modules/redis/redis.service';
+import { RedisService } from '@modules/redis/services/redis.service';
 import { AUTH_COOKIE_NAME } from '@modules/sessions/sessions.constants';
 import {
   ArgumentsHost,
@@ -12,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { RedisStore } from 'connect-redis';
+import type { Express } from 'express';
 import session from 'express-session';
 import { ZodSerializationException, ZodValidationPipe } from 'nestjs-zod';
 import passport from 'passport';
@@ -39,12 +41,26 @@ class HttpExceptionFilter implements ExceptionFilter {
 }
 
 export function setupApp(app: INestApplication): INestApplication {
-  app.useGlobalPipes(new ZodValidationPipe());
-  app.useGlobalFilters(new HttpExceptionFilter(app.get(HttpAdapterHost)));
-  app.useGlobalInterceptors(new LoggingInterceptor());
-
   const configService = app.get(ConfigService);
   const redisService = app.get(RedisService);
+  const isDev = configService.get('NODE_ENV') === 'development';
+
+  app.useGlobalPipes(new ZodValidationPipe());
+  app.useGlobalFilters(new HttpExceptionFilter(app.get(HttpAdapterHost)));
+  // DatabaseExceptionInterceptor is registered last so its error mapping runs
+  // first, letting LoggingInterceptor log the mapped 409 instead of a raw 500.
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(isDev),
+    new DatabaseExceptionInterceptor(),
+  );
+
+  // TLS is terminated by Cloudflare; internally everything is plain HTTP over
+  // cloudflared -> Traefik -> Node (two proxy hops). Trusting them lets
+  // express-session read X-Forwarded-Proto: https and emit the `secure` cookie.
+  if (configService.get('NODE_ENV') === 'production') {
+    const expressApp = app.getHttpAdapter().getInstance() as Express;
+    expressApp.set('trust proxy', 2);
+  }
 
   app.enableCors({
     origin:
@@ -68,8 +84,9 @@ export function setupApp(app: INestApplication): INestApplication {
         httpOnly: true,
         secure: configService.get('NODE_ENV') === 'production',
         signed: true,
-        sameSite:
-          configService.get('NODE_ENV') === 'production' ? 'strict' : 'lax',
+        // 'lax' (not 'strict') so the session cookie is still sent on the
+        // top-level redirect coming back from Google's OAuth screen.
+        sameSite: 'lax',
       },
     }),
   );

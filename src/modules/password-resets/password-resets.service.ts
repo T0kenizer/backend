@@ -1,9 +1,10 @@
-import { PasswordResetToken } from '@entities/password-reset-token.entity';
+import { PasswordResetToken } from '@entities/tokens/password-reset-token.entity';
 import { User } from '@entities/user.entity';
 import { EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { ConfigService } from '@modules/config/config.service';
 import { MailService } from '@modules/mail/mail.service';
+import * as Constants from '@modules/password-resets/password-resets.constants';
 import { UsersService } from '@modules/users/users.service';
 import {
   BadRequestException,
@@ -12,8 +13,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
-
-const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 @Injectable()
 export class PasswordResetsService {
@@ -35,12 +34,11 @@ export class PasswordResetsService {
     if (!user || !user.password) return;
     const em = this.tokenRepository.getEntityManager();
 
-    // clear old users token
     await this.tokenRepository.nativeDelete({ user, usedAt: null });
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = this.hash(rawToken);
-    const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+    const expiresAt = new Date(Date.now() + Constants.TOKEN_TTL_MS);
 
     this.tokenRepository.create({ user, tokenHash, expiresAt });
     await em.flush();
@@ -50,8 +48,6 @@ export class PasswordResetsService {
     try {
       await this.mailService.sendPasswordReset(email, resetUrl);
     } catch (error) {
-      // Never leak whether the email exists, and never let a mail failure
-      // crash the request or the process.
       this.logger.error(
         `Failed to send password reset email to ${email}`,
         error instanceof Error ? error.stack : String(error),

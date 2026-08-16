@@ -1,21 +1,15 @@
 import { User } from '@entities/user.entity';
-import {
-  Entity,
-  Index,
-  ManyToOne,
-  Opt,
-  PrimaryKey,
-  Property,
-} from '@mikro-orm/core';
+import { Entity, Opt, PrimaryKey, Property } from '@mikro-orm/core';
 
-@Entity({
-  tableName: 'password_reset_tokens',
-})
-@Index({
-  name: 'idx_password_reset_tokens_token_hash',
-  properties: ['tokenHash'],
-})
-export class PasswordResetToken {
+/**
+ * Shared shape of the single-use, expiring tokens we mail to users.
+ *
+ * Subclasses carry the `@Entity` and `@Index` decorators along with their own
+ * `user` relation, so each one owns the table and foreign key column it maps
+ * to.
+ */
+@Entity({ abstract: true })
+export abstract class Token {
   @PrimaryKey({
     name: 'uuid',
     type: 'uuid',
@@ -30,11 +24,7 @@ export class PasswordResetToken {
   })
   readonly tokenHash!: string;
 
-  @ManyToOne(() => User, {
-    name: 'user_uuid',
-    nullable: false,
-  })
-  user!: User;
+  abstract user: User;
 
   @Property({
     name: 'created_at',

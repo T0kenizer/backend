@@ -15,7 +15,9 @@
     "outDir": "./dist",
     "strict": true,
     "paths": {
+      "@decorators/*": ["./src/decorators/*"],
       "@entities/*": ["./src/entities/*"],
+      "@guards/*": ["./src/guards/*"],
       "@interceptors/*": ["./src/interceptors/*"],
       "@commands/*": ["./src/modules/commands/*"],
       "@modules/*": ["./src/modules/*"],
@@ -32,7 +34,7 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["node", "jest"]
+    "types": ["node", "jest", "multer"]
   },
   "ts-node": {
     "files": true
