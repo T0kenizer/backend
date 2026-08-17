@@ -1,6 +1,7 @@
-import type { GameConfig } from '@modules/game-core/config/game-config';
+import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import * as DTOs from '@modules/game-core/game-runtime.dtos';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
+import { AuthenticatedGuard } from '@modules/sessions/authenticated.guard';
 import {
   Body,
   Controller,
@@ -9,63 +10,85 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { ZodSerializerDto } from 'nestjs-zod';
 
 /**
  * POC REST router for the GameCore runtime. Mirrors the WebSocket gateway's
  * capabilities for out-of-band inspection and scripted testing; live gameplay
- * is expected to run over the socket. Assumes the caller is already
- * authenticated (identity is carried by `externalId` in this POC).
+ * is expected to run over the socket. Session CRUD follows the authenticated
+ * conventions (owner is the logged-in user); gameplay routes still carry the
+ * POC `externalId` identity.
  */
 @Controller('games')
+@UseGuards(AuthenticatedGuard)
 export class GameRuntimeController {
-  constructor(private readonly runtime: GameRuntimeService) {}
+  constructor(
+    private readonly runtime: GameRuntimeService,
+    private readonly rooms: GameRoomsService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  public create(@Body() data: DTOs.CreateGameData) {
-    return this.runtime.createSession(data.config as GameConfig | undefined);
+  @ZodSerializerDto(DTOs.CreateGameSessionResponse)
+  public create(@Body() data: DTOs.CreateGameSessionData, @Req() req: Request) {
+    return this.rooms.createGame(req.user!.uuid, data.config);
   }
 
-  @Get(':id')
-  public get(@Param('id') id: string) {
-    return this.runtime.snapshot(id);
+  /** Fetching a game lazily (re)opens its room from the persisted session. */
+  @Get(':uuid')
+  @ZodSerializerDto(DTOs.RetrieveGameSessionResponse)
+  public get(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.rooms.ensureRoomOpen(uuid);
   }
 
-  @Post(':id/participants')
+  @Post(':uuid/participants')
   @HttpCode(HttpStatus.OK)
-  public join(@Param('id') id: string, @Body() data: DTOs.JoinGameData) {
-    return this.runtime.join(id, data);
+  @ZodSerializerDto(DTOs.JoinGameSessionResponse)
+  public async join(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() data: DTOs.JoinGameSessionData,
+  ) {
+    await this.rooms.ensureRoomOpen(uuid);
+    return this.runtime.join(uuid, data);
   }
 
-  @Post(':id/rounds')
+  @Post(':uuid/rounds')
   @HttpCode(HttpStatus.CREATED)
-  public startRound(@Param('id') id: string) {
-    return this.runtime.startRound(id);
+  @ZodSerializerDto(DTOs.StartRoundResponse)
+  public startRound(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.runtime.startRound(uuid);
   }
 
-  @Post(':id/actions')
+  @Post(':uuid/actions')
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.SubmitActionResponse)
   public submitAction(
-    @Param('id') id: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.SubmitActionData,
   ) {
-    return this.runtime.submitAction(id, data);
+    return this.runtime.submitAction(uuid, data);
   }
 
-  @Post(':id/rounds/current/resolve')
+  @Post(':uuid/rounds/current/resolve')
   @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.ResolveRoundResponse)
   public resolveRound(
-    @Param('id') id: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.ResolveRoundData,
   ) {
-    return this.runtime.resolveRound(id, data.winnerExternalIds);
+    return this.runtime.resolveRound(uuid, data.winnerExternalIds);
   }
 
-  @Delete(':id')
+  @Delete(':uuid')
   @HttpCode(HttpStatus.OK)
-  public close(@Param('id') id: string) {
-    return this.runtime.closeSession(id);
+  @ZodSerializerDto(DTOs.CloseGameSessionResponse)
+  public close(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    return this.rooms.closeGame(uuid);
   }
 }

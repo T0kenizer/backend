@@ -1,35 +1,64 @@
+import {
+  closeGameSessionResponseSchema,
+  createGameSessionDataSchema,
+  createGameSessionResponseSchema,
+  joinGameSessionDataSchema,
+  joinGameSessionResponseSchema,
+  resolveRoundDataSchema,
+  resolveRoundResponseSchema,
+  retrieveGameSessionResponseSchema,
+  startRoundResponseSchema,
+  submitActionDataSchema,
+  submitActionResponseSchema,
+} from '@tokenizer/shared/schemas';
 import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
 
-/**
- * Runtime API DTOs. These POC endpoints define their schemas locally; once the
- * shapes stabilise they should migrate to the shared `@tokenizer/shared`
- * package like the rest of the app's DTOs.
- */
+/** Create Game Session DTOs */
 
-/** Custom config is passed through opaquely; omit it to use the default preset. */
-const createGameSchema = z.object({
-  config: z.unknown().optional(),
-});
+export class CreateGameSessionData extends createZodDto(
+  createGameSessionDataSchema,
+) {}
+export class CreateGameSessionResponse extends createZodDto(
+  createGameSessionResponseSchema,
+) {}
 
-const joinGameSchema = z.object({
-  /** Authenticated user UUID or an anonymous client id. */
-  externalId: z.string().min(1),
-  displayName: z.string().min(1).max(60),
-  initialBalance: z.number().int().nonnegative().default(1000),
-});
+/** Retrieve Game Session DTOs */
 
-const submitActionSchema = z.object({
-  externalId: z.string().min(1),
-  definitionId: z.string().min(1),
-  amount: z.number().int().nonnegative().optional(),
-});
+export class RetrieveGameSessionResponse extends createZodDto(
+  retrieveGameSessionResponseSchema,
+) {}
 
-const resolveRoundSchema = z.object({
-  winnerExternalIds: z.array(z.string().min(1)).optional(),
-});
+/** Join Game Session DTOs */
 
-export class CreateGameData extends createZodDto(createGameSchema) {}
-export class JoinGameData extends createZodDto(joinGameSchema) {}
-export class SubmitActionData extends createZodDto(submitActionSchema) {}
-export class ResolveRoundData extends createZodDto(resolveRoundSchema) {}
+export class JoinGameSessionData extends createZodDto(
+  joinGameSessionDataSchema,
+) {}
+export class JoinGameSessionResponse extends createZodDto(
+  joinGameSessionResponseSchema,
+) {}
+
+/** Start Round DTOs */
+
+export class StartRoundResponse extends createZodDto(
+  startRoundResponseSchema,
+) {}
+
+/** Submit Action DTOs */
+
+export class SubmitActionData extends createZodDto(submitActionDataSchema) {}
+export class SubmitActionResponse extends createZodDto(
+  submitActionResponseSchema,
+) {}
+
+/** Resolve Round DTOs */
+
+export class ResolveRoundData extends createZodDto(resolveRoundDataSchema) {}
+export class ResolveRoundResponse extends createZodDto(
+  resolveRoundResponseSchema,
+) {}
+
+/** Close Game Session DTOs */
+
+export class CloseGameSessionResponse extends createZodDto(
+  closeGameSessionResponseSchema,
+) {}

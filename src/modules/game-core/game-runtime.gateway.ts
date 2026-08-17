@@ -1,4 +1,4 @@
-import type { GameConfig } from '@modules/game-core/config/game-config';
+import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import { Logger } from '@nestjs/common';
 import {
@@ -10,6 +10,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import type { GameConfig } from '@tokenizer/shared/types';
 import type { Server, Socket } from 'socket.io';
 
 /** Events the server emits into a game room. */
@@ -65,8 +66,10 @@ function room(gameId: string): string {
 /**
  * WebSocket transport for live gameplay. A client connects, joins a game room,
  * and drives the round via `game:action`. State is broadcast to every socket in
- * the room after each transition. This POC carries identity in the payload
- * (`externalId`); a hardened build would derive it from the session handshake.
+ * the room after each transition. Room lifecycle (lazy opening from the DB,
+ * Redis registry, idle closure) is delegated to `GameRoomsService`. This POC
+ * carries identity in the payload (`externalId`); a hardened build would derive
+ * it from the session handshake.
  */
 @WebSocketGateway({ cors: { origin: true, credentials: true } })
 export class GameRuntimeGateway
@@ -77,7 +80,10 @@ export class GameRuntimeGateway
   @WebSocketServer()
   private readonly server!: Server;
 
-  constructor(private readonly runtime: GameRuntimeService) {}
+  constructor(
+    private readonly runtime: GameRuntimeService,
+    private readonly rooms: GameRoomsService,
+  ) {}
 
   handleConnection(client: Socket): void {
     this.logger.log(`Socket connected: ${client.id}`);
@@ -85,6 +91,9 @@ export class GameRuntimeGateway
 
   handleDisconnect(client: Socket): void {
     this.logger.log(`Socket disconnected: ${client.id}`);
+    void this.rooms.unbindSocket(client.id).catch((err: Error) => {
+      this.logger.error(`Failed to unbind socket ${client.id}: ${err.message}`);
+    });
   }
 
   /** Create a fresh session and join it as the first participant (the host). */
@@ -93,8 +102,11 @@ export class GameRuntimeGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CreatePayload,
   ) {
-    return this.guard(client, () => {
-      const created = this.runtime.createSession(payload.config);
+    return this.guardAsync(client, async () => {
+      const created = await this.rooms.createGame(
+        payload.externalId,
+        payload.config,
+      );
       return this.doJoin(client, {
         gameId: created.id,
         externalId: payload.externalId,
@@ -106,7 +118,10 @@ export class GameRuntimeGateway
 
   @SubscribeMessage('game:join')
   join(@ConnectedSocket() client: Socket, @MessageBody() payload: JoinPayload) {
-    return this.guard(client, () => this.doJoin(client, payload));
+    return this.guardAsync(client, async () => {
+      await this.rooms.ensureRoomOpen(payload.gameId);
+      return this.doJoin(client, payload);
+    });
   }
 
   @SubscribeMessage('game:start_round')
@@ -165,12 +180,15 @@ export class GameRuntimeGateway
     });
   }
 
+  /** Fetching a snapshot lazily (re)opens the room from the persisted session. */
   @SubscribeMessage('game:snapshot')
   snapshot(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GamePayload,
   ) {
-    return this.guard(client, () => this.runtime.snapshot(payload.gameId));
+    return this.guardAsync(client, () =>
+      this.rooms.ensureRoomOpen(payload.gameId),
+    );
   }
 
   @SubscribeMessage('game:close')
@@ -178,14 +196,14 @@ export class GameRuntimeGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: GamePayload,
   ) {
-    return this.guard(client, () => {
-      const snapshot = this.runtime.closeSession(payload.gameId);
+    return this.guardAsync(client, async () => {
+      const snapshot = await this.rooms.closeGame(payload.gameId);
       this.broadcast(payload.gameId, GameEvent.SESSION_CLOSED, snapshot);
       return snapshot;
     });
   }
 
-  private doJoin(client: Socket, payload: JoinPayload) {
+  private async doJoin(client: Socket, payload: JoinPayload) {
     const snapshot = this.runtime.join(payload.gameId, {
       externalId: payload.externalId,
       displayName: payload.displayName,
@@ -194,7 +212,8 @@ export class GameRuntimeGateway
     const state = stateOf(client);
     state.externalId = payload.externalId;
     state.gameId = payload.gameId;
-    void client.join(room(payload.gameId));
+    await client.join(room(payload.gameId));
+    await this.rooms.bindSocket(payload.gameId, client.id, payload.externalId);
     this.broadcast(payload.gameId, GameEvent.PARTICIPANT_JOINED, snapshot);
     return snapshot;
   }
