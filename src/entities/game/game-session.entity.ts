@@ -39,13 +39,22 @@ export class GameSession {
   participants = new Collection<GameParticipant>(this);
 
   @Property({
+    name: 'closed_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  closedAt: Nullable<Date> = null;
+
+  @Property({
     persist: false,
   })
   get config(): ConfigManager {
     return ConfigManager.fromJSON(this._config);
   }
 
-  set config(configManager: ConfigManager) {
-    this._config = configManager.toJSON();
+  // The hydrator also routes the raw `config` column through this setter, so
+  // it must accept plain JSON as well as a ConfigManager.
+  set config(value: ConfigManager | ConfigJSON) {
+    this._config = value instanceof ConfigManager ? value.toJSON() : value;
   }
 }

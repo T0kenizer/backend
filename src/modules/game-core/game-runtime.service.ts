@@ -1,71 +1,71 @@
-import { EndResolution } from '@modules/game-core/config/end-policy';
-import type { GameConfig } from '@modules/game-core/config/game-config';
-import type {
-  GameSessionId,
-  ParticipantId,
-} from '@modules/game-core/game-core.types';
+import type * as Types from '@modules/game-core/game-core.types';
 import { defaultGameConfig } from '@modules/game-core/game-runtime.presets';
-import {
-  serializeSession,
-  type GameSnapshot,
-} from '@modules/game-core/game-runtime.snapshot';
+import { serializeSession } from '@modules/game-core/game-runtime.snapshot';
 import { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
-import { RoundStatus } from '@modules/game-core/runtime/round';
 import {
   BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  EndResolution,
+  RoundStatus,
+  type GameConfig,
+  type GameSnapshot,
+  type RoundResolution,
+  type SubmitActionData,
+} from '@tokenizer/shared/types';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
 const DEBUG_DIR = join(process.cwd(), 'debug');
 
-export interface JoinParams {
-  /** External identity: authenticated user UUID or an anonymous client id. */
-  externalId: string;
-  displayName: string;
-  initialBalance: number;
-}
-
-export interface SubmitActionParams {
-  externalId: string;
-  definitionId: string;
-  amount?: number;
-}
-
-/** Emitted whenever a round settles, so callers can broadcast the outcome. */
-export interface RoundResolution {
-  roundId: string;
-  reason: 'LAST_PLAYER_STANDING' | 'MANUAL_HOST';
-  winners: ParticipantId[];
-  debugFile: string;
-}
-
 @Injectable()
 export class GameRuntimeService {
   private readonly logger = new Logger(GameRuntimeService.name);
-  private readonly sessions = new Map<GameSessionId, GameSession>();
+  private readonly sessions = new Map<Types.GameSessionId, GameSession>();
   /** Per-session external-identity → participant id, for idempotent joins. */
   private readonly identities = new Map<
-    GameSessionId,
-    Map<string, ParticipantId>
+    Types.GameSessionId,
+    Map<string, Types.ParticipantId>
   >();
 
   createSession(config?: GameConfig): GameSnapshot {
-    const session = new GameSession(
-      crypto.randomUUID(),
-      config ?? defaultGameConfig(),
-    );
+    return this.registerSession(crypto.randomUUID(), config);
+  }
+
+  /**
+   * Registers a runtime session under an externally-supplied id — the DB
+   * `GameSession` uuid — so the in-memory aggregate, the Socket.IO room and the
+   * persisted row all share the same identifier.
+   */
+  registerSession(
+    gameId: Types.GameSessionId,
+    config?: GameConfig,
+  ): GameSnapshot {
+    if (this.sessions.has(gameId)) {
+      throw new BadRequestException(`Game session ${gameId} is already open`);
+    }
+    const session = new GameSession(gameId, config ?? defaultGameConfig());
     this.sessions.set(session.id, session);
     this.identities.set(session.id, new Map());
     this.logger.log(`Created game session ${session.id}`);
     return this.snapshot(session.id);
   }
 
-  snapshot(gameId: GameSessionId): GameSnapshot {
+  hasSession(gameId: Types.GameSessionId): boolean {
+    return this.sessions.has(gameId);
+  }
+
+  /** Drops the in-memory aggregate; persisted state is untouched. */
+  disposeSession(gameId: Types.GameSessionId): void {
+    this.sessions.delete(gameId);
+    this.identities.delete(gameId);
+  }
+
+  snapshot(gameId: Types.GameSessionId): GameSnapshot {
     return serializeSession(gameId, this.getSessionOrThrow(gameId));
   }
 
@@ -74,7 +74,7 @@ export class GameRuntimeService {
    * contact. Re-joining with the same external id returns the existing
    * participant (survives reconnects).
    */
-  join(gameId: GameSessionId, params: JoinParams): GameSnapshot {
+  join(gameId: Types.GameSessionId, params: Types.JoinParams): GameSnapshot {
     const session = this.getSessionOrThrow(gameId);
     const registry = this.identities.get(gameId)!;
 
@@ -93,7 +93,7 @@ export class GameRuntimeService {
     return this.snapshot(gameId);
   }
 
-  startRound(gameId: GameSessionId): GameSnapshot {
+  startRound(gameId: Types.GameSessionId): GameSnapshot {
     const session = this.getSessionOrThrow(gameId);
     const round = session.startRound();
     round.applyForcedBets();
@@ -106,8 +106,8 @@ export class GameRuntimeService {
    * fresh snapshot plus a resolution descriptor when the round terminated.
    */
   async submitAction(
-    gameId: GameSessionId,
-    params: SubmitActionParams,
+    gameId: Types.GameSessionId,
+    params: SubmitActionData,
   ): Promise<{ snapshot: GameSnapshot; resolution?: RoundResolution }> {
     const session = this.getSessionOrThrow(gameId);
     if (!session.currentRound) {
@@ -127,12 +127,12 @@ export class GameRuntimeService {
 
   /** Host-driven termination for MANUAL_HOST end policies. */
   async resolveRound(
-    gameId: GameSessionId,
+    gameId: Types.GameSessionId,
     winnerExternalIds: string[] = [],
   ): Promise<{ snapshot: GameSnapshot; resolution: RoundResolution }> {
     const session = this.getSessionOrThrow(gameId);
     const round = session.currentRound;
-    if (!round || round.status === RoundStatus.RESOLVED) {
+    if (!round || round.status === RoundStatus.Resolved) {
       throw new BadRequestException('No active round to resolve');
     }
 
@@ -145,7 +145,7 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), resolution };
   }
 
-  closeSession(gameId: GameSessionId): GameSnapshot {
+  closeSession(gameId: Types.GameSessionId): GameSnapshot {
     const session = this.getSessionOrThrow(gameId);
     session.closeSession();
     const snapshot = this.snapshot(gameId);
@@ -153,7 +153,10 @@ export class GameRuntimeService {
     return snapshot;
   }
 
-  resolveParticipant(gameId: GameSessionId, externalId: string): ParticipantId {
+  resolveParticipant(
+    gameId: Types.GameSessionId,
+    externalId: string,
+  ): Types.ParticipantId {
     const participantId = this.identities.get(gameId)?.get(externalId);
     if (!participantId) {
       throw new BadRequestException(
@@ -163,7 +166,7 @@ export class GameRuntimeService {
     return participantId;
   }
 
-  private getSessionOrThrow(gameId: GameSessionId): GameSession {
+  private getSessionOrThrow(gameId: Types.GameSessionId): GameSession {
     const session = this.sessions.get(gameId);
     if (!session)
       throw new NotFoundException(`Game session ${gameId} not found`);
@@ -175,14 +178,14 @@ export class GameRuntimeService {
    * remains, the round auto-resolves and the pot is awarded to the survivor.
    */
   private async evaluateEndConditions(
-    gameId: GameSessionId,
+    gameId: Types.GameSessionId,
   ): Promise<RoundResolution | undefined> {
     const session = this.getSessionOrThrow(gameId);
     const round = session.currentRound;
-    if (!round || round.status !== RoundStatus.IN_PROGRESS) return undefined;
+    if (!round || round.status !== RoundStatus.InProgress) return undefined;
 
     const { endPolicy } = session.config;
-    if (endPolicy.resolution !== EndResolution.AUTOMATIC) return undefined;
+    if (endPolicy.resolution !== EndResolution.Automatic) return undefined;
 
     const hasLastStanding = endPolicy.conditions.some(
       (c) => c.type === 'LAST_PLAYER_STANDING',
@@ -202,9 +205,9 @@ export class GameRuntimeService {
    * will replace this file dump later.
    */
   private async dumpRound(
-    gameId: GameSessionId,
+    gameId: Types.GameSessionId,
     reason: RoundResolution['reason'],
-    winners: ParticipantId[],
+    winners: Types.ParticipantId[],
   ): Promise<RoundResolution> {
     const snapshot = this.snapshot(gameId);
     const roundId = snapshot.currentRound?.id ?? 'unknown';

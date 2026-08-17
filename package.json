@@ -48,7 +48,7 @@
     "@nestjs/platform-socket.io": "^11.1.28",
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/websockets": "^11.1.28",
-    "@tokenizer/shared": "github:T0kenizer/shared#main",
+    "@tokenizer/shared": "github:T0kenizer/shared#feature/game-core",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.1.0",
     "connect-redis": "^9.0.0",
