@@ -1,20 +1,16 @@
-import type { GameConfig } from '@modules/game-core/config/game-config';
 import type {
   ControllerIdentifier,
   GameSessionId,
   ParticipantId,
 } from '@modules/game-core/game-core.types';
+import { Participant } from '@modules/game-core/runtime/participant';
+import { Round } from '@modules/game-core/runtime/round';
 import {
-  Participant,
+  GameSessionStatus,
   ParticipantStatus,
-} from '@modules/game-core/runtime/participant';
-import { Round, RoundStatus } from '@modules/game-core/runtime/round';
-
-export enum GameSessionStatus {
-  LOBBY = 'LOBBY',
-  RUNNING = 'RUNNING',
-  FINISHED = 'FINISHED',
-}
+  RoundStatus,
+  type GameConfig,
+} from '@tokenizer/shared/types';
 
 export class GameSession {
   readonly id: GameSessionId;
@@ -27,7 +23,7 @@ export class GameSession {
   constructor(id: GameSessionId, config: GameConfig) {
     this.id = id;
     this.config = config;
-    this.status = GameSessionStatus.LOBBY;
+    this.status = GameSessionStatus.Lobby;
     this.participants = new Map();
   }
 
@@ -36,7 +32,7 @@ export class GameSession {
     initialBalance: number;
     controller: ControllerIdentifier;
   }): Participant {
-    if (this.status !== GameSessionStatus.LOBBY) {
+    if (this.status !== GameSessionStatus.Lobby) {
       throw new Error('Participants can only be added while in LOBBY');
     }
     const seatIndex = this.participants.size;
@@ -51,33 +47,33 @@ export class GameSession {
   }
 
   startRound(): Round {
-    if (this.status === GameSessionStatus.FINISHED) {
+    if (this.status === GameSessionStatus.Finished) {
       throw new Error('Session is already finished');
     }
     if (
       this.currentRound !== undefined &&
-      (this.currentRound.status === RoundStatus.INIT ||
-        this.currentRound.status === RoundStatus.IN_PROGRESS)
+      (this.currentRound.status === RoundStatus.Init ||
+        this.currentRound.status === RoundStatus.InProgress)
     ) {
       throw new Error('Resolve the current round before starting a new one');
     }
 
     const active = [...this.participants.values()]
-      .filter((p) => p.status !== ParticipantStatus.ELIMINATED)
+      .filter((p) => p.status !== ParticipantStatus.Eliminated)
       .sort((a, b) => a.seatIndex - b.seatIndex);
 
     if (active.length < 2) {
       throw new Error('At least 2 non-eliminated participants are required');
     }
 
-    if (this.status === GameSessionStatus.LOBBY) {
-      this.status = GameSessionStatus.RUNNING;
+    if (this.status === GameSessionStatus.Lobby) {
+      this.status = GameSessionStatus.Running;
     }
 
     // Reset per-round state — FOLDED reverts to ACTIVE; ELIMINATED stays out
     for (const p of active) {
-      if (p.status === ParticipantStatus.FOLDED) {
-        p.status = ParticipantStatus.ACTIVE;
+      if (p.status === ParticipantStatus.Folded) {
+        p.status = ParticipantStatus.Active;
       }
     }
 
@@ -88,6 +84,6 @@ export class GameSession {
 
   closeSession(): void {
     this.currentRound?.resolve();
-    this.status = GameSessionStatus.FINISHED;
+    this.status = GameSessionStatus.Finished;
   }
 }

@@ -2,13 +2,7 @@ import type {
   ControllerIdentifier,
   ParticipantId,
 } from '@modules/game-core/game-core.types';
-
-export enum ParticipantStatus {
-  ACTIVE = 'ACTIVE',
-  FOLDED = 'FOLDED',
-  ELIMINATED = 'ELIMINATED',
-  WAITING = 'WAITING',
-}
+import { ParticipantStatus } from '@tokenizer/shared/types';
 
 export interface ParticipantParams {
   displayName: string;
@@ -31,7 +25,7 @@ export class Participant {
     this.displayName = params.displayName;
     this.balance = params.balance;
     this.seatIndex = params.seatIndex;
-    this.status = ParticipantStatus.ACTIVE;
+    this.status = ParticipantStatus.Active;
     this.controller = params.controller;
   }
 }

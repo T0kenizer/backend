@@ -1,14 +1,12 @@
-import type { ActionDef } from '@modules/game-core/config/action-def';
+import type { ParticipantId } from '@modules/game-core/game-core.types';
+import type { Participant } from '@modules/game-core/runtime/participant';
 import {
   Direction,
-  TurnRegime,
-  type TurnPolicy,
-} from '@modules/game-core/config/turn-policy';
-import type { ParticipantId } from '@modules/game-core/game-core.types';
-import {
   ParticipantStatus,
-  type Participant,
-} from '@modules/game-core/runtime/participant';
+  TurnRegime,
+  type ActionDef,
+  type TurnPolicy,
+} from '@tokenizer/shared/types';
 
 export interface InterruptionClaim {
   participantId: ParticipantId;
@@ -44,7 +42,7 @@ export class TurnState {
   }
 
   computeLegalActions(): ActionDef[] {
-    if (this.policy.regime === TurnRegime.SIMULTANEOUS) {
+    if (this.policy.regime === TurnRegime.Simultaneous) {
       return this.catalog;
     }
     if (this.interruptionOpen) {
@@ -56,8 +54,8 @@ export class TurnState {
   advance(): void {
     const eligible = this.participants.filter(
       (p) =>
-        p.status === ParticipantStatus.ACTIVE ||
-        p.status === ParticipantStatus.WAITING,
+        p.status === ParticipantStatus.Active ||
+        p.status === ParticipantStatus.Waiting,
     );
     if (eligible.length === 0) return;
 
@@ -65,7 +63,7 @@ export class TurnState {
       (p) => p.id === this.activeParticipant,
     );
 
-    if (this.policy.direction === Direction.CLOCKWISE) {
+    if (this.policy.direction === Direction.Clockwise) {
       this.activeParticipant =
         eligible[(currentIndex + 1) % eligible.length].id;
     } else {
@@ -77,7 +75,7 @@ export class TurnState {
   }
 
   openInterruptionWindow(onExpire?: () => void): void {
-    if (this.policy.regime !== TurnRegime.SEQUENTIAL_INTERRUPTIBLE) return;
+    if (this.policy.regime !== TurnRegime.SequentialInterruptible) return;
     if (this.policy.interruptionWindow === null) return;
 
     this.interruptionOpen = true;

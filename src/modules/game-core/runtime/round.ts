@@ -1,24 +1,19 @@
-import { AmountForm } from '@modules/game-core/config/action-def';
-import { PotMode } from '@modules/game-core/config/economy-policy';
-import type { GameConfig } from '@modules/game-core/config/game-config';
 import type {
   ParticipantId,
   RoundId,
 } from '@modules/game-core/game-core.types';
 import type { ActionParams } from '@modules/game-core/runtime/action';
 import { Action } from '@modules/game-core/runtime/action';
-import {
-  Participant,
-  ParticipantStatus,
-} from '@modules/game-core/runtime/participant';
+import { Participant } from '@modules/game-core/runtime/participant';
 import { Pot } from '@modules/game-core/runtime/pot';
 import { TurnState } from '@modules/game-core/runtime/turn-state';
-
-export enum RoundStatus {
-  INIT = 'INIT',
-  IN_PROGRESS = 'IN_PROGRESS',
-  RESOLVED = 'RESOLVED',
-}
+import {
+  AmountForm,
+  ParticipantStatus,
+  PotMode,
+  RoundStatus,
+  type GameConfig,
+} from '@tokenizer/shared/types';
 
 export class Round {
   readonly id: RoundId;
@@ -38,7 +33,7 @@ export class Round {
     orderedParticipants: Participant[],
   ) {
     this.id = crypto.randomUUID();
-    this.status = RoundStatus.INIT;
+    this.status = RoundStatus.Init;
     this.config = config;
     this.participantMap = participantMap;
     this.actionLog = [];
@@ -52,7 +47,7 @@ export class Round {
   }
 
   private initPots(participantIds: ParticipantId[]): Pot[] {
-    if (this.config.economy.potMode === PotMode.SINGLE) {
+    if (this.config.economy.potMode === PotMode.Single) {
       return [new Pot(participantIds)];
     }
     // MULTIPLE_SIDEPOTS: start with a single main pot; side pots are added
@@ -63,7 +58,7 @@ export class Round {
   applyForcedBets(): void {
     const { forcedBets } = this.config.economy;
     const ordered = [...this.participantMap.values()]
-      .filter((p) => p.status !== ParticipantStatus.ELIMINATED)
+      .filter((p) => p.status !== ParticipantStatus.Eliminated)
       .sort((a, b) => a.seatIndex - b.seatIndex);
 
     for (const fb of forcedBets) {
@@ -84,11 +79,11 @@ export class Round {
       );
     }
 
-    this.status = RoundStatus.IN_PROGRESS;
+    this.status = RoundStatus.InProgress;
   }
 
   submitAction(params: ActionParams): Action {
-    if (this.status !== RoundStatus.IN_PROGRESS) {
+    if (this.status !== RoundStatus.InProgress) {
       throw new Error(`Cannot submit action — round is ${this.status}`);
     }
 
@@ -118,7 +113,7 @@ export class Round {
     }
 
     // Validate amount against the action definition
-    if (def.amountForm !== AmountForm.NONE && params.amount === undefined) {
+    if (def.amountForm !== AmountForm.None && params.amount === undefined) {
       throw new Error(
         `Action "${def.id}" requires an amount (amountForm: ${def.amountForm})`,
       );
@@ -138,7 +133,7 @@ export class Round {
     // Actions flagged as folding remove the participant from the round before
     // the turn advances, so rotation and end conditions skip them.
     if (def.foldsParticipant) {
-      participant.status = ParticipantStatus.FOLDED;
+      participant.status = ParticipantStatus.Folded;
     }
 
     this.actionLog.push(action);
@@ -165,7 +160,7 @@ export class Round {
    */
   contenders(): Participant[] {
     return [...this.participantMap.values()]
-      .filter((p) => p.status === ParticipantStatus.ACTIVE)
+      .filter((p) => p.status === ParticipantStatus.Active)
       .sort((a, b) => a.seatIndex - b.seatIndex);
   }
 
@@ -175,7 +170,7 @@ export class Round {
    * remainder guarantees no chips are lost to integer division. Idempotent.
    */
   resolve(winnerIds: ParticipantId[] = []): void {
-    if (this.status === RoundStatus.RESOLVED) return;
+    if (this.status === RoundStatus.Resolved) return;
     this.turnState.closeInterruptionWindow();
 
     for (const pot of this.pots) {
@@ -195,7 +190,7 @@ export class Round {
       });
     }
 
-    this.status = RoundStatus.RESOLVED;
+    this.status = RoundStatus.Resolved;
   }
 
   private get mainPot(): Pot {
