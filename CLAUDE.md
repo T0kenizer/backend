@@ -143,6 +143,7 @@ npx jest src/modules/users/users.service.spec.ts
 
 ## TypeScript conventions
 
+- File names must be in **kebab-case** (e.g. `game-runtime.service.ts` ✅ — `gameRuntimeService.ts` ❌).
 - Use the global utility types `Optional<T>`, `Nullable<T>` and `Nullish<T>`, declared in `src/types/global.d.ts`, instead of writing `T | undefined`, `T | null` or `T | null | undefined` inline.
   - `foo: Optional<string>` ✅ — `foo: string | undefined` ❌
   - `bar: Nullable<Date>` ✅ — `bar: Date | null` ❌
