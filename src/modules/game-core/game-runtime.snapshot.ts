@@ -1,4 +1,3 @@
-import type { GameSessionId } from '@modules/game-core/game-core.types';
 import type { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
 import type { Pot } from '@modules/game-core/runtime/pot';
@@ -17,10 +16,25 @@ import type {
  * cross the boundary.
  */
 
-function serializeParticipant(p: Participant): ParticipantSnapshot {
+/**
+ * Raw runtime participant fields, before `displayName`/`photoUrl` are resolved
+ * (account/config fallback needs DB access the runtime doesn't have —
+ * `GameRoomsService` finishes the job before this crosses the wire).
+ */
+export interface RawParticipantSnapshot extends Omit<
+  ParticipantSnapshot,
+  'displayName' | 'photoUrl'
+> {
+  displayNameOverride: Nullable<string>;
+  hasPhotoOverride: boolean;
+}
+
+function serializeParticipant(p: Participant): RawParticipantSnapshot {
   return {
     id: p.id,
-    displayName: p.displayName,
+    role: p.role,
+    displayNameOverride: p.displayNameOverride,
+    hasPhotoOverride: p.hasPhotoOverride,
     balance: p.balance,
     seatIndex: p.seatIndex,
     status: p.status,
@@ -57,16 +71,27 @@ function serializeRound(round: Round): RoundSnapshot {
   };
 }
 
+/**
+ * The runtime aggregate has no notion of the join code (a DB/room concern) or
+ * of the final `displayName`/`photoUrl` (account/config fallback resolved
+ * outside it); callers finish both when the snapshot crosses into
+ * REST/WebSocket responses.
+ */
+export type RuntimeSnapshot = Omit<
+  GameSnapshot,
+  'joinCode' | 'participants'
+> & {
+  participants: RawParticipantSnapshot[];
+};
+
 export function serializeSession(
-  id: GameSessionId,
+  id: string,
   session: GameSession,
-): GameSnapshot {
+): RuntimeSnapshot {
   return {
     id,
     status: session.status,
-    participants: [...session.participants.values()]
-      .sort((a, b) => a.seatIndex - b.seatIndex)
-      .map(serializeParticipant),
+    participants: session.seats.map(serializeParticipant),
     currentRound: session.currentRound
       ? serializeRound(session.currentRound)
       : null,

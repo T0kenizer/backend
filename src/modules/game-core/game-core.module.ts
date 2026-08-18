@@ -13,10 +13,11 @@ import { Module } from '@nestjs/common';
 /**
  * GameCore runtime module. Exposes the in-memory game runtime over both REST
  * (POC router) and WebSocket (live gameplay). `GameSessionsService` owns the
- * persisted `GameSession` CRUD; the runtime aggregate is held in memory by
- * `GameRuntimeService`; `GameRoomsService` maps rooms onto the persisted rows
- * (registry in Redis core), opens them lazily on fetch and closes them after
- * five idle minutes.
+ * persisted rows (`GameSession` + its `GameParticipant` seats); the runtime
+ * aggregate is held in memory by `GameRuntimeService`; `GameRoomsService`
+ * orchestrates the two — rooms open lazily on fetch (hydrating seats and
+ * balances from the rows), settle balances back on round resolution, and close
+ * after five idle minutes (socket occupancy tracked in Redis core).
  */
 @Module({
   imports: [

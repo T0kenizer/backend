@@ -1,7 +1,5 @@
 {
-  "namespaces": [
-    "public"
-  ],
+  "namespaces": ["public"],
   "name": "public",
   "tables": [
     {
@@ -22,13 +20,61 @@
           "enumItems": [],
           "mappedType": "uuid"
         },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "varchar(255)",
+        "username": {
+          "name": "username",
+          "type": "varchar(64)",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": false,
+          "unique": false,
+          "length": 64,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(64)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 64,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(320)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 320,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "password": {
+          "name": "password",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
           "unique": false,
           "length": 255,
           "precision": null,
@@ -38,9 +84,58 @@
           "enumItems": [],
           "mappedType": "string"
         },
+        "google_id": {
+          "name": "google_id",
+          "type": "varchar(64)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 64,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "avatar_uuid": {
+          "name": "avatar_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'USER'",
+          "comment": null,
+          "enumItems": ["USER", "ADMIN", "OWNER"],
+          "mappedType": "enum",
+          "nativeEnumName": "user_role"
+        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -54,9 +149,9 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamptz(6)",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -65,14 +160,14 @@
           "length": 6,
           "precision": null,
           "scale": null,
-          "default": null,
+          "default": "now()",
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "used_at": {
-          "name": "used_at",
-          "type": "timestamptz(6)",
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -86,85 +181,128 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "user_uuid": {
-          "name": "user_uuid",
-          "type": "uuid",
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": false,
+          "nullable": true,
           "unique": false,
-          "length": null,
+          "length": 6,
           "precision": null,
           "scale": null,
           "default": null,
           "comment": null,
           "enumItems": [],
-          "mappedType": "uuid"
+          "mappedType": "datetime"
         }
       },
-      "name": "account_confirmation_tokens",
+      "name": "users",
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["username"],
           "composite": false,
+          "keyName": "idx_users_username",
           "constraint": false,
-          "keyName": "account_confirmation_tokens_pkey",
-          "unique": true,
-          "primary": true
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "columnNames": ["username"],
           "composite": false,
+          "keyName": "users_username_unique",
+          "constraint": true,
+          "primary": false,
+          "unique": true
+        },
+        {
+          "columnNames": ["display_name"],
+          "composite": false,
+          "keyName": "idx_users_display_name",
           "constraint": false,
-          "keyName": "idx_account_confirmation_tokens_token_hash",
-          "unique": false,
-          "primary": false
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": ["email"],
+          "composite": false,
+          "keyName": "idx_users_email",
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": ["email"],
+          "composite": false,
+          "keyName": "users_email_unique",
+          "constraint": true,
+          "primary": false,
+          "unique": true
+        },
+        {
+          "columnNames": ["google_id"],
+          "composite": false,
+          "keyName": "idx_users_google_id",
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": ["google_id"],
+          "composite": false,
+          "keyName": "users_google_id_unique",
+          "constraint": true,
+          "primary": false,
+          "unique": true
+        },
+        {
+          "columnNames": ["avatar_uuid"],
+          "composite": false,
+          "keyName": "idx_users_avatar_uuid",
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "keyName": "users_pkey",
+          "columnNames": ["uuid"],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
       "foreignKeys": {
-        "account_confirmation_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
-          "constraintName": "account_confirmation_tokens_user_uuid_foreign",
-          "localTableName": "public.account_confirmation_tokens",
-          "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "no action"
+        "users_avatar_uuid_foreign": {
+          "constraintName": "users_avatar_uuid_foreign",
+          "columnNames": ["avatar_uuid"],
+          "localTableName": "public.users",
+          "referencedColumnNames": ["uuid"],
+          "referencedTableName": "public.files",
+          "deleteRule": "set null",
+          "updateRule": "cascade"
         }
       },
       "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         }
-      },
-      "comment": null
+      }
     },
     {
       "columns": {
@@ -202,7 +340,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -218,7 +356,7 @@
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -234,7 +372,7 @@
         },
         "used_at": {
           "name": "used_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -265,68 +403,414 @@
           "mappedType": "uuid"
         }
       },
-      "name": "account_deletion_tokens",
+      "name": "password_reset_tokens",
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "keyName": "idx_password_reset_tokens_token_hash",
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
-          "keyName": "account_deletion_tokens_pkey",
-          "unique": true,
-          "primary": true
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "keyName": "password_reset_tokens_pkey",
+          "columnNames": ["uuid"],
           "composite": false,
-          "constraint": false,
-          "keyName": "idx_account_deletion_tokens_token_hash",
-          "unique": false,
-          "primary": false
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
       "foreignKeys": {
-        "account_deletion_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
-          "constraintName": "account_deletion_tokens_user_uuid_foreign",
-          "localTableName": "public.account_deletion_tokens",
+        "password_reset_tokens_user_uuid_foreign": {
+          "constraintName": "password_reset_tokens_user_uuid_foreign",
+          "columnNames": ["user_uuid"],
+          "localTableName": "public.password_reset_tokens",
+          "referencedColumnNames": ["uuid"],
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "no action"
+          "updateRule": "cascade"
         }
       },
       "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
+        }
+      }
+    },
+    {
+      "columns": {
+        "uuid": {
+          "name": "uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "gen_random_uuid()",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "join_code": {
+          "name": "join_code",
+          "type": "varchar(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
+        "owner_uuid": {
+          "name": "owner_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         }
       },
-      "comment": null
+      "name": "game_sessions",
+      "schema": "public",
+      "indexes": [
+        {
+          "columnNames": ["join_code"],
+          "composite": false,
+          "keyName": "game_sessions_join_code_unique",
+          "constraint": true,
+          "primary": false,
+          "unique": true
+        },
+        {
+          "keyName": "game_sessions_pkey",
+          "columnNames": ["uuid"],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
+        }
+      ],
+      "checks": [],
+      "foreignKeys": {
+        "game_sessions_owner_uuid_foreign": {
+          "constraintName": "game_sessions_owner_uuid_foreign",
+          "columnNames": ["owner_uuid"],
+          "localTableName": "public.game_sessions",
+          "referencedColumnNames": ["uuid"],
+          "referencedTableName": "public.users",
+          "updateRule": "cascade"
+        }
+      },
+      "nativeEnums": {
+        "user_role": {
+          "name": "user_role",
+          "schema": "public",
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
+        }
+      }
+    },
+    {
+      "columns": {
+        "uuid": {
+          "name": "uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "gen_random_uuid()",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "session_uuid": {
+          "name": "session_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "seat_index": {
+          "name": "seat_index",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "role": {
+          "name": "role",
+          "type": "game_participant_role",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": ["HOST", "PLAYER"],
+          "mappedType": "enum",
+          "nativeEnumName": "game_participant_role"
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(60)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 60,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "initial_balance": {
+          "name": "initial_balance",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "balance": {
+          "name": "balance",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "user_uuid": {
+          "name": "user_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "claimed_by": {
+          "name": "claimed_by",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        }
+      },
+      "name": "game_participants",
+      "schema": "public",
+      "indexes": [
+        {
+          "keyName": "uq_game_participants_session_seat",
+          "columnNames": ["session_uuid", "seat_index"],
+          "composite": true,
+          "constraint": true,
+          "primary": false,
+          "unique": true
+        },
+        {
+          "keyName": "game_participants_pkey",
+          "columnNames": ["uuid"],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
+        }
+      ],
+      "checks": [
+        {
+          "name": "chk_game_participants_host_has_no_user",
+          "expression": "role != 'HOST' or user_uuid is null",
+          "definition": "check ((role != 'HOST' or user_uuid is null))"
+        }
+      ],
+      "foreignKeys": {
+        "game_participants_session_uuid_foreign": {
+          "constraintName": "game_participants_session_uuid_foreign",
+          "columnNames": ["session_uuid"],
+          "localTableName": "public.game_participants",
+          "referencedColumnNames": ["uuid"],
+          "referencedTableName": "public.game_sessions",
+          "updateRule": "cascade"
+        },
+        "game_participants_user_uuid_foreign": {
+          "constraintName": "game_participants_user_uuid_foreign",
+          "columnNames": ["user_uuid"],
+          "localTableName": "public.game_participants",
+          "referencedColumnNames": ["uuid"],
+          "referencedTableName": "public.users",
+          "deleteRule": "set null",
+          "updateRule": "cascade"
+        }
+      },
+      "nativeEnums": {
+        "user_role": {
+          "name": "user_role",
+          "schema": "public",
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
+        }
+      }
     },
     {
       "columns": {
@@ -369,7 +853,7 @@
           "autoincrement": false,
           "primary": false,
           "nullable": false,
-          "unique": true,
+          "unique": false,
           "length": 255,
           "precision": null,
           "scale": null,
@@ -412,15 +896,15 @@
         },
         "size_bytes": {
           "name": "size_bytes",
-          "type": "int4",
+          "type": "int",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": false,
           "unique": false,
           "length": null,
-          "precision": 32,
-          "scale": 0,
+          "precision": null,
+          "scale": null,
           "default": null,
           "comment": null,
           "enumItems": [],
@@ -455,13 +939,8 @@
           "scale": null,
           "default": "'PENDING'",
           "comment": null,
-          "enumItems": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ],
-          "mappedType": "unknown",
+          "enumItems": ["PENDING", "PROCESSING", "READY", "FAILED"],
+          "mappedType": "enum",
           "nativeEnumName": "file_status"
         },
         "created_by_uuid": {
@@ -482,7 +961,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -498,7 +977,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -514,7 +993,7 @@
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -533,345 +1012,75 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["checksum_sha256"],
           "composite": false,
-          "constraint": false,
-          "keyName": "files_pkey",
-          "unique": true,
-          "primary": true
-        },
-        {
-          "columnNames": [
-            "checksum_sha256"
-          ],
-          "composite": false,
-          "constraint": false,
           "keyName": "idx_files_checksum",
-          "unique": false,
-          "primary": false
+          "constraint": false,
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "created_by_uuid"
-          ],
+          "columnNames": ["status"],
           "composite": false,
-          "constraint": false,
-          "keyName": "idx_files_created_by_uuid",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "status"
-          ],
-          "composite": false,
-          "constraint": false,
           "keyName": "idx_files_status",
-          "unique": false,
-          "primary": false
+          "constraint": false,
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "bucket_name",
-            "bucket_key"
-          ],
+          "columnNames": ["created_by_uuid"],
+          "composite": false,
+          "keyName": "idx_files_created_by_uuid",
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "keyName": "uq_files_bucket_name_key",
+          "columnNames": ["bucket_name", "bucket_key"],
           "composite": true,
           "constraint": true,
-          "keyName": "uq_files_bucket_name_key",
-          "unique": true,
-          "primary": false
+          "primary": false,
+          "unique": true
+        },
+        {
+          "keyName": "files_pkey",
+          "columnNames": ["uuid"],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
       "foreignKeys": {
         "files_created_by_uuid_foreign": {
-          "columnNames": [
-            "created_by_uuid"
-          ],
           "constraintName": "files_created_by_uuid_foreign",
+          "columnNames": ["created_by_uuid"],
           "localTableName": "public.files",
+          "referencedColumnNames": ["uuid"],
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "set null"
+          "deleteRule": "set null",
+          "updateRule": "cascade"
         }
       },
       "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
-        }
-      },
-      "comment": null
-    },
-    {
-      "columns": {
-        "uuid": {
-          "name": "uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": true,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "gen_random_uuid()",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
+          "items": ["USER", "ADMIN", "OWNER"]
         },
-        "session_uuid": {
-          "name": "session_uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
         },
-        "identifier": {
-          "name": "identifier",
-          "type": "varchar(255)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": 255,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "string"
-        },
-        "claimed_at": {
-          "name": "claimed_at",
-          "type": "timestamptz(6)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": 6,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "datetime"
-        }
-      },
-      "name": "game_participants",
-      "schema": "public",
-      "indexes": [
-        {
-          "columnNames": [
-            "uuid"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "game_participants_pkey",
-          "unique": true,
-          "primary": true
-        },
-        {
-          "columnNames": [
-            "identifier"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_game_participants_identifier",
-          "unique": false,
-          "primary": false
-        }
-      ],
-      "checks": [],
-      "foreignKeys": {
-        "game_participants_session_uuid_foreign": {
-          "columnNames": [
-            "session_uuid"
-          ],
-          "constraintName": "game_participants_session_uuid_foreign",
-          "localTableName": "public.game_participants",
-          "referencedTableName": "public.game_sessions",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "no action"
-        }
-      },
-      "nativeEnums": {
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
-        "user_role": {
-          "name": "user_role",
-          "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         }
-      },
-      "comment": null
-    },
-    {
-      "columns": {
-        "uuid": {
-          "name": "uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": true,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "gen_random_uuid()",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
-        },
-        "config": {
-          "name": "config",
-          "type": "jsonb",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "json"
-        },
-        "owner_uuid": {
-          "name": "owner_uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "timestamptz(6)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": 6,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "datetime"
-        }
-      },
-      "name": "game_sessions",
-      "schema": "public",
-      "indexes": [
-        {
-          "columnNames": [
-            "uuid"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "game_sessions_pkey",
-          "unique": true,
-          "primary": true
-        }
-      ],
-      "checks": [],
-      "foreignKeys": {
-        "game_sessions_owner_uuid_foreign": {
-          "columnNames": [
-            "owner_uuid"
-          ],
-          "constraintName": "game_sessions_owner_uuid_foreign",
-          "localTableName": "public.game_sessions",
-          "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "no action"
-        }
-      },
-      "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
-        "user_role": {
-          "name": "user_role",
-          "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
-        }
-      },
-      "comment": null
+      }
     },
     {
       "columns": {
@@ -907,25 +1116,9 @@
           "enumItems": [],
           "mappedType": "string"
         },
-        "user_uuid": {
-          "name": "user_uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
-        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -941,7 +1134,7 @@
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -957,7 +1150,7 @@
         },
         "used_at": {
           "name": "used_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -970,70 +1163,72 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "user_uuid": {
+          "name": "user_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
         }
       },
-      "name": "password_reset_tokens",
+      "name": "account_deletion_tokens",
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "keyName": "idx_account_deletion_tokens_token_hash",
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
-          "keyName": "idx_password_reset_tokens_token_hash",
-          "unique": false,
-          "primary": false
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "keyName": "account_deletion_tokens_pkey",
+          "columnNames": ["uuid"],
           "composite": false,
-          "constraint": false,
-          "keyName": "password_reset_tokens_pkey",
-          "unique": true,
-          "primary": true
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
       "foreignKeys": {
-        "password_reset_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
-          "constraintName": "password_reset_tokens_user_uuid_foreign",
-          "localTableName": "public.password_reset_tokens",
+        "account_deletion_tokens_user_uuid_foreign": {
+          "constraintName": "account_deletion_tokens_user_uuid_foreign",
+          "columnNames": ["user_uuid"],
+          "localTableName": "public.account_deletion_tokens",
+          "referencedColumnNames": ["uuid"],
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "no action"
+          "updateRule": "cascade"
         }
       },
       "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         }
-      },
-      "comment": null
+      }
     },
     {
       "columns": {
@@ -1053,61 +1248,13 @@
           "enumItems": [],
           "mappedType": "uuid"
         },
-        "username": {
-          "name": "username",
-          "type": "varchar(64)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": true,
-          "length": 64,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "string"
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "varchar(64)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": 64,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "string"
-        },
-        "email": {
-          "name": "email",
-          "type": "varchar(320)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": true,
-          "length": 320,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "string"
-        },
-        "password": {
-          "name": "password",
+        "token_hash": {
+          "name": "token_hash",
           "type": "varchar(255)",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": true,
+          "nullable": false,
           "unique": false,
           "length": 255,
           "precision": null,
@@ -1117,46 +1264,9 @@
           "enumItems": [],
           "mappedType": "string"
         },
-        "google_id": {
-          "name": "google_id",
-          "type": "varchar(64)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": true,
-          "length": 64,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "string"
-        },
-        "role": {
-          "name": "role",
-          "type": "user_role",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "'USER'",
-          "comment": null,
-          "enumItems": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ],
-          "mappedType": "unknown",
-          "nativeEnumName": "user_role"
-        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamptz(6)",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -1170,9 +1280,9 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamptz(6)",
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -1181,14 +1291,14 @@
           "length": 6,
           "precision": null,
           "scale": null,
-          "default": "now()",
+          "default": null,
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamptz(6)",
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -1202,29 +1312,13 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "confirmed_at": {
-          "name": "confirmed_at",
-          "type": "timestamptz(6)",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": 6,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "datetime"
-        },
-        "avatar_uuid": {
-          "name": "avatar_uuid",
+        "user_uuid": {
+          "name": "user_uuid",
           "type": "uuid",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": true,
+          "nullable": false,
           "unique": false,
           "length": null,
           "precision": null,
@@ -1235,159 +1329,71 @@
           "mappedType": "uuid"
         }
       },
-      "name": "users",
+      "name": "account_confirmation_tokens",
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "avatar_uuid"
-          ],
+          "keyName": "idx_account_confirmation_tokens_token_hash",
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
-          "keyName": "idx_users_avatar_uuid",
-          "unique": false,
-          "primary": false
+          "primary": false,
+          "unique": false
         },
         {
-          "columnNames": [
-            "display_name"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_users_display_name",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "email"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_users_email",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "google_id"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_users_google_id",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "username"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_users_username",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "email"
-          ],
+          "keyName": "account_confirmation_tokens_pkey",
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": true,
-          "keyName": "users_email_unique",
-          "unique": true,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "google_id"
-          ],
-          "composite": false,
-          "constraint": true,
-          "keyName": "users_google_id_unique",
-          "unique": true,
-          "primary": false
-        },
-        {
-          "columnNames": [
-            "uuid"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "users_pkey",
-          "unique": true,
-          "primary": true
-        },
-        {
-          "columnNames": [
-            "username"
-          ],
-          "composite": false,
-          "constraint": true,
-          "keyName": "users_username_unique",
-          "unique": true,
-          "primary": false
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
       "foreignKeys": {
-        "users_avatar_uuid_foreign": {
-          "columnNames": [
-            "avatar_uuid"
-          ],
-          "constraintName": "users_avatar_uuid_foreign",
-          "localTableName": "public.users",
-          "referencedTableName": "public.files",
-          "referencedColumnNames": [
-            "uuid"
-          ],
-          "updateRule": "cascade",
-          "deleteRule": "set null"
+        "account_confirmation_tokens_user_uuid_foreign": {
+          "constraintName": "account_confirmation_tokens_user_uuid_foreign",
+          "columnNames": ["user_uuid"],
+          "localTableName": "public.account_confirmation_tokens",
+          "referencedColumnNames": ["uuid"],
+          "referencedTableName": "public.users",
+          "updateRule": "cascade"
         }
       },
       "nativeEnums": {
-        "file_status": {
-          "name": "file_status",
-          "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
-        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
+        },
+        "game_participant_role": {
+          "name": "game_participant_role",
+          "schema": "public",
+          "items": ["HOST", "PLAYER"]
+        },
+        "file_status": {
+          "name": "file_status",
+          "schema": "public",
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         }
-      },
-      "comment": null
+      }
     }
   ],
   "nativeEnums": {
-    "file_status": {
-      "name": "file_status",
-      "schema": "public",
-      "items": [
-        "PENDING",
-        "PROCESSING",
-        "READY",
-        "FAILED"
-      ]
-    },
     "user_role": {
       "name": "user_role",
       "schema": "public",
-      "items": [
-        "USER",
-        "ADMIN",
-        "OWNER"
-      ]
+      "items": ["USER", "ADMIN", "OWNER"]
+    },
+    "game_participant_role": {
+      "name": "game_participant_role",
+      "schema": "public",
+      "items": ["HOST", "PLAYER"]
+    },
+    "file_status": {
+      "name": "file_status",
+      "schema": "public",
+      "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
     }
   }
 }

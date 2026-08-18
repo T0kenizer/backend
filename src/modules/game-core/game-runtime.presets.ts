@@ -11,11 +11,22 @@ import {
 
 /**
  * A poker-flavoured default used when a session is created without an explicit
- * config. It exercises the full runtime: forced blinds, sequential turns, a
- * folding action, and an automatic "last player standing" end condition.
+ * config. It exercises the full runtime: pre-declared seats, forced blinds,
+ * sequential turns, a folding action, and an automatic "last player standing"
+ * end condition.
  */
 export function defaultGameConfig(): GameConfig {
   return {
+    seating: {
+      seats: [
+        { displayName: 'Seat 1' },
+        { displayName: 'Seat 2' },
+        { displayName: 'Seat 3' },
+        { displayName: 'Seat 4' },
+      ],
+      defaultInitialBalance: 1000,
+      allowMidGameClaims: true,
+    },
     economy: {
       potMode: PotMode.Single,
       chipModel: ChipModel.AbstractBalance,

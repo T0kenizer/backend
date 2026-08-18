@@ -8,8 +8,7 @@ import {
   PrimaryKey,
   Property,
 } from '@mikro-orm/core';
-import { ConfigManager } from '@modules/game-core/config-manager';
-import type { ConfigJSON } from '@modules/game-core/game-core.types';
+import type { GameConfig } from '@tokenizer/shared/types';
 
 @Entity({
   tableName: 'game_sessions',
@@ -22,12 +21,30 @@ export class GameSession {
   })
   readonly uuid: string = crypto.randomUUID();
 
+  /**
+   * Short human-shareable code identifying the room (Socket.IO room name, Redis
+   * occupancy keys) — distinct from the DB primary key. Generated at creation
+   * and unique among open sessions.
+   */
+  @Property({
+    name: 'join_code',
+    type: 'varchar',
+    length: 6,
+    unique: true,
+    nullable: false,
+  })
+  joinCode!: string;
+
+  /**
+   * Stored as-is; validated against `gameConfigSchema` at the API boundary on
+   * write and re-validated on read when a room is hydrated.
+   */
   @Property({
     name: 'config',
     type: 'jsonb',
     nullable: false,
   })
-  private _config!: ConfigJSON;
+  config!: GameConfig;
 
   @ManyToOne(() => User, {
     name: 'owner_uuid',
@@ -44,17 +61,4 @@ export class GameSession {
     nullable: true,
   })
   closedAt: Nullable<Date> = null;
-
-  @Property({
-    persist: false,
-  })
-  get config(): ConfigManager {
-    return ConfigManager.fromJSON(this._config);
-  }
-
-  // The hydrator also routes the raw `config` column through this setter, so
-  // it must accept plain JSON as well as a ConfigManager.
-  set config(value: ConfigManager | ConfigJSON) {
-    this._config = value instanceof ConfigManager ? value.toJSON() : value;
-  }
 }

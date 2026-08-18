@@ -14,6 +14,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
 import bcrypt from 'bcrypt';
 import slugify from 'slugify';
+import { z } from 'zod';
 
 const HASH_ROUNDS = 10;
 
@@ -52,6 +53,14 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     return user;
+  }
+
+  public async findUserByUuid(uuid: string): Promise<Nullable<User>> {
+    // Callers may pass an anonymous client id here (not a uuid at all), so
+    // this must not reach the Postgres uuid cast with a malformed value.
+    if (!z.uuid().safeParse(uuid).success) return null;
+
+    return this.usersRepository.findOne({ uuid }, { populate: ['avatar'] });
   }
 
   public async findOrCreateFromGoogle(

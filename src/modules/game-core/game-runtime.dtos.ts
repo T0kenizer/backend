@@ -1,15 +1,17 @@
 import {
+  claimSeatDataSchema,
+  claimSeatResponseSchema,
   closeGameSessionResponseSchema,
   createGameSessionDataSchema,
   createGameSessionResponseSchema,
-  joinGameSessionDataSchema,
-  joinGameSessionResponseSchema,
   resolveRoundDataSchema,
   resolveRoundResponseSchema,
   retrieveGameSessionResponseSchema,
   startRoundResponseSchema,
   submitActionDataSchema,
   submitActionResponseSchema,
+  updateSeatDataSchema,
+  updateSeatResponseSchema,
 } from '@tokenizer/shared/schemas';
 import { createZodDto } from 'nestjs-zod';
 
@@ -28,13 +30,16 @@ export class RetrieveGameSessionResponse extends createZodDto(
   retrieveGameSessionResponseSchema,
 ) {}
 
-/** Join Game Session DTOs */
+/** Claim Seat DTOs */
 
-export class JoinGameSessionData extends createZodDto(
-  joinGameSessionDataSchema,
-) {}
-export class JoinGameSessionResponse extends createZodDto(
-  joinGameSessionResponseSchema,
+export class ClaimSeatData extends createZodDto(claimSeatDataSchema) {}
+export class ClaimSeatResponse extends createZodDto(claimSeatResponseSchema) {}
+
+/** Update Seat DTOs */
+
+export class UpdateSeatData extends createZodDto(updateSeatDataSchema) {}
+export class UpdateSeatResponse extends createZodDto(
+  updateSeatResponseSchema,
 ) {}
 
 /** Start Round DTOs */
