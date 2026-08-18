@@ -3,7 +3,7 @@ FROM node:24-alpine
 ENV NODE_ENV=development
 
 WORKDIR /app
-RUN chown node:node /app
+RUN chmod 777 /app
 
 USER node
 
@@ -13,6 +13,7 @@ COPY --chown=node:node mikro-orm.config.ts ./
 RUN npm install
 
 COPY --chown=node:node . .
+RUN chmod -R 777 /app/dist 2>/dev/null || mkdir -m 777 /app/dist
 
 EXPOSE 3000
 
