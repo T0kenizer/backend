@@ -62,7 +62,7 @@ npm run update:shared    # Update @tokenizer/shared from GitHub
 - `files/` — file uploads to Firebase Storage: the `File` row is persisted as `Pending` before the transfer (crash-safe), images are processed with sharp, upload runs sync or async (`FILES_QUEUE` + `FilesConsumer`).
 - `firebase/` — `FirebaseService` wrapping firebase-admin (Storage bucket access).
 - `redis/` — three clients exposed as injectable services in `services/`: `RedisService` (core, session storage), `RedisQueueService` (BullMQ connection — always pass its `bullConnection` adapter, never the raw client), `RedisCacheService`. Each has its own host/port env vars.
-- `game-core/` — in-memory game runtime exposed over REST (`GameRuntimeController`, POC) and WebSocket (`GameRuntimeGateway`, Socket.IO events `game:*`). `GameRuntimeService` holds the aggregate (`runtime/`: game-session, round, participant, pot, turn-state); config objects in `config/` (action defs, economy/turn/end policies) are (de)serialized via `ConfigManager`. Database persistence is planned but not wired yet.
+- `game-core/` — game runtime exposed over REST (`GameRuntimeController`, POC) and WebSocket (`GameRuntimeGateway`, Socket.IO events `game:*`, payloads validated with the shared Zod schemas). `GameRuntimeService` holds the in-memory aggregate (`runtime/`: game-session, round, participant, pot, turn-state); `GameSessionsService` owns the persisted rows (`GameSession` + its pre-declared `GameParticipant` seats); `GameRoomsService` orchestrates both — lazy room opening (hydrating seats/balances from the DB), balance persistence on round resolution, host-only transitions, idle closure after 5 minutes. See `documentation.md` in the module.
 - `commands/` — `nest-commander` CLI commands (e.g. `create-superuser`). Entry point is `src/cli.ts`.
 - `health.controller.ts` — `GET /health` (liveness) and `GET /health/ready` (readiness: pings Postgres and the three Redis clients with a 1s timeout).
 
@@ -78,7 +78,7 @@ npm run update:shared    # Update @tokenizer/shared from GitHub
 - `User` — soft-delete via `deletedAt` (filter `notDeleted` applied by default), local + Google OAuth credentials, `role` (`UserRole` enum from shared), `avatar` (→ `File`), `confirmedAt` for email confirmation.
 - `File` — Firebase Storage object metadata (unique bucket name/key pair, sha256 checksum, `FileStatus`), soft-delete via `notDeleted` filter.
 - `tokens/` — abstract `Token` base class (single-use, expiring, stores `tokenHash`) with concrete `PasswordResetToken`, `AccountConfirmationToken` and `AccountDeletionToken`, each owning its table and `user` FK.
-- `game/` — `GameSession` (owner `User`, config stored as JSONB and deserialized through `ConfigManager`) and `GameParticipant`.
+- `game/` — `GameSession` (owner `User`, `GameConfig` stored as plain JSONB, validated with the shared `gameConfigSchema` at the boundaries) and `GameParticipant` (one row per declared seat: `seat_index`, `role` HOST/PLAYER, balances, nullable `user` link, `claimed_by`/`claimed_at`).
 
 **DTOs** use `nestjs-zod` (`createZodDto`) and pull their schemas from the `@tokenizer/shared` package (GitHub: `T0kenizer/shared`). Validation is applied globally via `ZodValidationPipe`; serialization via `ZodSerializerInterceptor`.
 
@@ -112,17 +112,17 @@ Orchestration lives at the **monorepo root** (`../`), not in this package: `dock
 
 All required vars are defined in `src/modules/config/config.schema.ts`. The app throws at startup if any are missing:
 
-| Variable                                                      | Description                                               |
-| ------------------------------------------------------------- | --------------------------------------------------------- |
-| `POSTGRES_HOST/PORT/USER/PASSWORD/DB`                          | PostgreSQL connection                                      |
-| `REDIS_HOST/PORT`                                              | Redis (core, session store)                                |
-| `REDIS_QUEUE_HOST/PORT`                                        | Redis (BullMQ queues)                                      |
-| `REDIS_CACHE_HOST/PORT`                                        | Redis (cache)                                              |
-| `SMTP_HOST/PORT/FROM` (optional `SMTP_USER/PASSWORD`)          | Mail (dev: Mailpit on port 1025)                           |
-| `SECRET_KEY`                                                   | Session secret                                             |
-| `FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY/STORAGE_BUCKET`  | Firebase Storage (`\n` in the key is unescaped automatically) |
-| `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`                         | Google OAuth2                                              |
-| `FRONTEND_URL`                                                 | Used for post-OAuth redirect                               |
+| Variable                                                      | Description                                                   |
+| ------------------------------------------------------------- | ------------------------------------------------------------- |
+| `POSTGRES_HOST/PORT/USER/PASSWORD/DB`                         | PostgreSQL connection                                         |
+| `REDIS_HOST/PORT`                                             | Redis (core, session store)                                   |
+| `REDIS_QUEUE_HOST/PORT`                                       | Redis (BullMQ queues)                                         |
+| `REDIS_CACHE_HOST/PORT`                                       | Redis (cache)                                                 |
+| `SMTP_HOST/PORT/FROM` (optional `SMTP_USER/PASSWORD`)         | Mail (dev: Mailpit on port 1025)                              |
+| `SECRET_KEY`                                                  | Session secret                                                |
+| `FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY/STORAGE_BUCKET` | Firebase Storage (`\n` in the key is unescaped automatically) |
+| `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`                        | Google OAuth2                                                 |
+| `FRONTEND_URL`                                                | Used for post-OAuth redirect                                  |
 
 ## Database / Migrations
 
@@ -135,7 +135,7 @@ After modifying an entity, run `npm run makemigrations` to generate a migration,
 - **Unit tests** live in `*.spec.ts` files co-located with the file they test (e.g. `users.service.ts` → `users.service.spec.ts` in the same directory).
 - **E2E tests** live in `test/` (run with `npm run test:e2e`, config in `test/jest-e2e.json`).
 
-The Jest config maps `@factories/*` to `test/factories/` for test data factories, loads `jest.setup.ts`, and excludes modules/constants/entities/types from coverage. Run a single spec file:
+The Jest config maps `@factories/*` to `test/factories/` for test data factories and excludes modules/constants/entities/types from coverage. Run a single spec file:
 
 ```bash
 npx jest src/modules/users/users.service.spec.ts

@@ -1,22 +1,18 @@
-import type {
-  ParticipantId,
-  RoundId,
-} from '@modules/game-core/game-core.types';
 import type { ActionParams } from '@modules/game-core/runtime/action';
 import { Action } from '@modules/game-core/runtime/action';
 import { Participant } from '@modules/game-core/runtime/participant';
 import { Pot } from '@modules/game-core/runtime/pot';
 import { TurnState } from '@modules/game-core/runtime/turn-state';
+import { BadRequestException } from '@nestjs/common';
 import {
   AmountForm,
   ParticipantStatus,
-  PotMode,
   RoundStatus,
   type GameConfig,
 } from '@tokenizer/shared/types';
 
 export class Round {
-  readonly id: RoundId;
+  readonly id: string;
   status: RoundStatus;
   readonly pots: Pot[];
   readonly turnState: TurnState;
@@ -24,21 +20,19 @@ export class Round {
   readonly actionLog: Action[];
 
   private readonly config: GameConfig;
-  private readonly participantMap: Map<ParticipantId, Participant>;
+  /** Seat-ordered participants of this round (claimed, not eliminated). */
+  private readonly participants: Participant[];
 
-  constructor(
-    config: GameConfig,
-    participantMap: Map<ParticipantId, Participant>,
-    /** Seat-ordered participants for this round (excludes eliminated) */
-    orderedParticipants: Participant[],
-  ) {
+  constructor(config: GameConfig, orderedParticipants: Participant[]) {
     this.id = crypto.randomUUID();
     this.status = RoundStatus.Init;
     this.config = config;
-    this.participantMap = participantMap;
+    this.participants = orderedParticipants;
     this.actionLog = [];
 
-    this.pots = this.initPots(orderedParticipants.map((p) => p.id));
+    // A single main pot; side pots (MULTIPLE_SIDEPOTS) will be created
+    // dynamically as all-ins occur — not implemented in v0.
+    this.pots = [new Pot(orderedParticipants.map((p) => p.id))];
     this.turnState = new TurnState(
       config.turnPolicy,
       config.actionCatalog,
@@ -46,23 +40,10 @@ export class Round {
     );
   }
 
-  private initPots(participantIds: ParticipantId[]): Pot[] {
-    if (this.config.economy.potMode === PotMode.Single) {
-      return [new Pot(participantIds)];
-    }
-    // MULTIPLE_SIDEPOTS: start with a single main pot; side pots are added
-    // dynamically as all-ins occur (not implemented in v0).
-    return [new Pot(participantIds)];
-  }
-
   applyForcedBets(): void {
-    const { forcedBets } = this.config.economy;
-    const ordered = [...this.participantMap.values()]
-      .filter((p) => p.status !== ParticipantStatus.Eliminated)
-      .sort((a, b) => a.seatIndex - b.seatIndex);
-
-    for (const fb of forcedBets) {
-      const participant = ordered[fb.seatOffset % ordered.length];
+    for (const fb of this.config.economy.forcedBets) {
+      const participant =
+        this.participants[fb.seatOffset % this.participants.length];
       if (!participant) continue;
 
       const amount = Math.min(fb.amount, participant.balance);
@@ -84,24 +65,37 @@ export class Round {
 
   submitAction(params: ActionParams): Action {
     if (this.status !== RoundStatus.InProgress) {
-      throw new Error(`Cannot submit action — round is ${this.status}`);
+      throw new BadRequestException(
+        `Cannot submit action — round is ${this.status}`,
+      );
     }
 
     const def = this.config.actionCatalog.find(
       (d) => d.id === params.definitionId,
     );
     if (!def) {
-      throw new Error(`Unknown action definition: "${params.definitionId}"`);
+      throw new BadRequestException(
+        `Unknown action definition: "${params.definitionId}"`,
+      );
     }
 
-    const isActiveTurn =
-      this.turnState.activeParticipant === params.participantId;
+    const participant = this.participants.find(
+      (p) => p.id === params.participantId,
+    );
+    if (!participant) {
+      throw new BadRequestException('Participant is not part of this round');
+    }
 
-    if (!isActiveTurn) {
-      if (!this.turnState.interruptionOpen || !def.grantsInterruption) {
-        throw new Error(`It is not participant ${params.participantId}'s turn`);
+    // While an interruption window is open, the only legal move — for anyone,
+    // active participant included — is to compete for the turn with an
+    // interrupting action. Normal actions would advance the rotation and
+    // silently discard the pending claims.
+    if (this.turnState.interruptionOpen) {
+      if (!def.grantsInterruption) {
+        throw new BadRequestException(
+          'An interruption window is open — only interrupting actions are legal',
+        );
       }
-      // Register as a competing claim during the interruption window
       this.turnState.addClaim({
         participantId: params.participantId,
         definitionId: params.definitionId,
@@ -112,16 +106,20 @@ export class Round {
       return action;
     }
 
+    if (this.turnState.activeParticipant !== params.participantId) {
+      throw new BadRequestException(
+        `It is not participant ${params.participantId}'s turn`,
+      );
+    }
+
     // Validate amount against the action definition
     if (def.amountForm !== AmountForm.None && params.amount === undefined) {
-      throw new Error(
+      throw new BadRequestException(
         `Action "${def.id}" requires an amount (amountForm: ${def.amountForm})`,
       );
     }
 
     const action = new Action(params);
-    const participant = this.participantMap.get(params.participantId);
-    if (!participant) throw new Error('Participant not found');
 
     // Move chips if an amount is provided
     if (params.amount !== undefined && params.amount > 0) {
@@ -139,7 +137,7 @@ export class Round {
     this.actionLog.push(action);
 
     if (def.grantsInterruption) {
-      this.turnState.openInterruptionWindow(() => {
+      const opened = this.turnState.openInterruptionWindow(() => {
         // Auto-resolve on window expiry if no claims arrived
         if (this.turnState.pendingClaims.length > 0) {
           this.turnState.resolveClaims();
@@ -147,6 +145,8 @@ export class Round {
           this.turnState.advance();
         }
       });
+      // Regimes without interruptions rotate normally.
+      if (!opened) this.turnState.advance();
     } else {
       this.turnState.advance();
     }
@@ -159,35 +159,27 @@ export class Round {
    * Seat-ordered.
    */
   contenders(): Participant[] {
-    return [...this.participantMap.values()]
-      .filter((p) => p.status === ParticipantStatus.Active)
-      .sort((a, b) => a.seatIndex - b.seatIndex);
+    return this.participants.filter(
+      (p) => p.status === ParticipantStatus.Active,
+    );
   }
 
   /**
-   * Settles the round. When winners are supplied, every pot is awarded to the
-   * eligible winners (split equally, remainder to the earliest seat); the
-   * remainder guarantees no chips are lost to integer division. Idempotent.
+   * Settles the round: every pot is emptied into its eligible winners' balances
+   * (split equally, remainder to the earliest seat). Idempotent.
    */
-  resolve(winnerIds: ParticipantId[] = []): void {
+  resolve(winnerIds: string[] = []): void {
     if (this.status === RoundStatus.Resolved) return;
     this.turnState.closeInterruptionWindow();
 
     for (const pot of this.pots) {
       const eligibleWinners = winnerIds
-        .map((id) => this.participantMap.get(id))
+        .map((id) => this.participants.find((p) => p.id === id))
         .filter(
           (p): p is Participant =>
             p !== undefined && pot.eligibleParticipants.includes(p.id),
         );
-      if (eligibleWinners.length === 0 || pot.amount === 0) continue;
-
-      const share = Math.floor(pot.amount / eligibleWinners.length);
-      const remainder = pot.amount - share * eligibleWinners.length;
-      pot.amount = 0;
-      eligibleWinners.forEach((winner, index) => {
-        winner.balance += share + (index === 0 ? remainder : 0);
-      });
+      pot.payOut(eligibleWinners);
     }
 
     this.status = RoundStatus.Resolved;

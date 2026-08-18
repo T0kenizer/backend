@@ -1,17 +1,12 @@
-import type {
-  ActionId,
-  ParticipantId,
-} from '@modules/game-core/game-core.types';
-
 export interface ActionParams {
-  participantId: ParticipantId;
+  participantId: string;
   definitionId: string;
   amount?: number;
 }
 
 export class Action {
-  readonly id: ActionId;
-  readonly participantId: ParticipantId;
+  readonly id: string;
+  readonly participantId: string;
   readonly definitionId: string;
   readonly amount?: number;
   readonly timestamp: Date;

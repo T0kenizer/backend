@@ -1,5 +1,5 @@
-import type { ParticipantId } from '@modules/game-core/game-core.types';
 import type { Participant } from '@modules/game-core/runtime/participant';
+import { BadRequestException } from '@nestjs/common';
 import {
   Direction,
   ParticipantStatus,
@@ -9,19 +9,19 @@ import {
 } from '@tokenizer/shared/types';
 
 export interface InterruptionClaim {
-  participantId: ParticipantId;
+  participantId: string;
   definitionId: string;
   claimedAt: Date;
 }
 
 export class TurnState {
-  activeParticipant: ParticipantId;
+  activeParticipant: string;
   interruptionOpen: boolean;
   pendingClaims: InterruptionClaim[];
 
   private readonly policy: TurnPolicy;
   private readonly catalog: ActionDef[];
-  /** Ordered by seatIndex, held by reference — Round keeps this in sync */
+  /** The round's participants, seat-ordered, held by reference. */
   private readonly participants: Participant[];
   private interruptionTimer?: ReturnType<typeof setTimeout>;
 
@@ -31,7 +31,9 @@ export class TurnState {
     orderedParticipants: Participant[],
   ) {
     if (orderedParticipants.length === 0) {
-      throw new Error('TurnState requires at least one participant');
+      throw new BadRequestException(
+        'TurnState requires at least one participant',
+      );
     }
     this.policy = policy;
     this.catalog = catalog;
@@ -51,41 +53,50 @@ export class TurnState {
     return this.catalog;
   }
 
+  /**
+   * Moves the turn to the next participant still in contention. The rotation
+   * walks the full seat order from the current holder — who may already be
+   * folded (a folding action retires them before the turn advances) — so a fold
+   * hands the turn to the _next_ seat, not back to seat 0.
+   */
   advance(): void {
-    const eligible = this.participants.filter(
-      (p) =>
-        p.status === ParticipantStatus.Active ||
-        p.status === ParticipantStatus.Waiting,
-    );
-    if (eligible.length === 0) return;
-
-    const currentIndex = eligible.findIndex(
+    const seats = this.participants.length;
+    const currentIndex = this.participants.findIndex(
       (p) => p.id === this.activeParticipant,
     );
+    if (currentIndex === -1) return;
 
-    if (this.policy.direction === Direction.Clockwise) {
-      this.activeParticipant =
-        eligible[(currentIndex + 1) % eligible.length].id;
-    } else {
-      this.activeParticipant =
-        eligible[(currentIndex - 1 + eligible.length) % eligible.length].id;
+    const step = this.policy.direction === Direction.Clockwise ? 1 : -1;
+    for (let offset = 1; offset <= seats; offset++) {
+      const index = (((currentIndex + step * offset) % seats) + seats) % seats;
+      const candidate = this.participants[index];
+      if (candidate.status === ParticipantStatus.Active) {
+        this.activeParticipant = candidate.id;
+        return;
+      }
     }
-
-    this.closeInterruptionWindow();
   }
 
-  openInterruptionWindow(onExpire?: () => void): void {
-    if (this.policy.regime !== TurnRegime.SequentialInterruptible) return;
-    if (this.policy.interruptionWindow === null) return;
+  /**
+   * Opens the interruption window when the regime supports it. Returns whether
+   * the window actually opened, so the caller can advance the turn normally
+   * when it did not.
+   */
+  openInterruptionWindow(onExpire?: () => void): boolean {
+    if (this.policy.regime !== TurnRegime.SequentialInterruptible) return false;
+    if (this.policy.interruptionWindow === null) return false;
 
     this.interruptionOpen = true;
 
     if (onExpire) {
       this.interruptionTimer = setTimeout(() => {
-        this.closeInterruptionWindow();
+        this.interruptionOpen = false;
+        this.interruptionTimer = undefined;
         onExpire();
       }, this.policy.interruptionWindow);
+      this.interruptionTimer.unref?.();
     }
+    return true;
   }
 
   closeInterruptionWindow(): void {
@@ -101,7 +112,7 @@ export class TurnState {
    * FIFO priority among concurrent claimants. Returns the winning claim and
    * transfers the active turn to that participant.
    */
-  resolveClaims(): InterruptionClaim | null {
+  resolveClaims(): Nullable<InterruptionClaim> {
     if (this.pendingClaims.length === 0) return null;
 
     const winner = [...this.pendingClaims].sort(
@@ -115,7 +126,7 @@ export class TurnState {
 
   addClaim(claim: InterruptionClaim): void {
     if (!this.interruptionOpen) {
-      throw new Error('No interruption window is open');
+      throw new BadRequestException('No interruption window is open');
     }
     this.pendingClaims.push(claim);
   }

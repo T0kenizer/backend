@@ -2,10 +2,19 @@
 
 ```
 GameConfig
+  ├── seating: SeatingPolicy        (Axe S — la table)
   ├── economy: EconomyPolicy        (Axe A)
   ├── actionCatalog: ActionDef[]    (Axe B)
   ├── turnPolicy: TurnPolicy        (Axe C)
   └── endPolicy: EndPolicy          (Axe D)
+```
+
+```
+SeatingPolicy (les sièges sont déclarés à la création)
+  ├── count: number                 (sièges créés, hôte inclus ; min 2)
+  ├── initialBalance: number        (solde de départ de chaque siège)
+  └── allowMidGameClaims: bool      (défaut true ; false = sièges libres
+                                     verrouillés dès que la partie démarre)
 ```
 
 ```
@@ -21,7 +30,8 @@ ActionDef
   ├── id: string                    (ex: "raise")
   ├── label: string
   ├── amountForm: enum { NONE, FREE, CONSTRAINED, RAISE }
-  └── grantsInterruption: bool      (cette action peut-elle voler le tour ?)
+  ├── grantsInterruption: bool      (cette action peut-elle voler le tour ?)
+  └── foldsParticipant: bool?       (cette action retire-t-elle le joueur du round ?)
 ```
 
 ```
@@ -37,126 +47,129 @@ EndPolicy
   └── conditions: EndCondition[]    (vide en v0 si MANUAL_HOST)
 ```
 
+# Modèle de participants (sièges déclarés puis réclamés)
+
+La création d'une session crée `seating.count` lignes `game_participants` :
+
+- **Siège 0 = `HOST`** — réclamé immédiatement par le propriétaire de la
+  session (l'utilisateur connecté, référencé par `game_sessions.owner`).
+- **Sièges suivants = `PLAYER`** — libres (`WAITING`), sans nom ni contrôleur.
+
+Un joueur **réclame** ensuite un siège (`claim`) avec son _external ID_
+(UUID d'un utilisateur connecté ou ID de session d'un anonyme) : le siège
+reçoit `claimedBy` / `claimedAt` / `displayName` et passe `ACTIVE`. Réclamer
+avec le même external ID est idempotent (survit aux reconnexions), et reste
+possible entre deux rounds tant que la session n'est pas `FINISHED` — sauf si
+`seating.allowMidGameClaims` est `false`, auquel cas les sièges libres sont
+verrouillés dès que la partie démarre (`RUNNING`) ; les reconnexions d'un
+joueur déjà assis restent toujours permises. Un arrivant en cours de partie
+n'entre pas dans le round en cours (les contendants sont figés au
+`startRound`) : il joue à partir du round suivant. Un siège non réclamé reste
+`WAITING` et **ne participe pas aux rounds**.
+
+La colonne `user_uuid` (nullable) est prête pour la liaison à un compte : un
+siège `PLAYER` pourra être soit lié à un user en base, soit occupé par un
+joueur de la room via `claimed_by`. Elle est réservée aux sièges `PLAYER` —
+l'hôte est déjà porté par `game_sessions.owner`, donc une ligne `HOST` garde
+`user_uuid` vide (contrainte `CHECK` en base).
+
 # Objets runtime (pendant une partie)
 
 ```
 GameSession
-  ├── id: GameSessionId
+  ├── id: string                    (= uuid de la ligne game_sessions)
   ├── status: enum { LOBBY, RUNNING, FINISHED }
   ├── config: GameConfig            (référence, lecture seule)
-  ├── participants: Participant[]
+  ├── participants: Map<id, Participant>  (tous les sièges)
   ├── currentRound: Round?
   └── méthodes:
-      + addParticipant()
-      + startRound()
+      + claimSeat()
+      + startRound()                (≥ 2 sièges réclamés non éliminés)
       + closeSession()
 ```
 
 ```
-Participant
-  ├── id: ParticipantId
-  ├── displayName: string
-  ├── balance: number               (persiste entre les rounds)
-  ├── seatIndex: number             (ordre pour les tours)
+Participant (un siège ; id = uuid de la ligne game_participants)
+  ├── id, seatIndex, role: enum { HOST, PLAYER }
+  ├── displayName: string?          (null tant que non réclamé)
+  ├── balance: number               (persiste entre les rounds, resynchronisé en BDD à chaque résolution)
   ├── status: enum { ACTIVE, FOLDED, ELIMINATED, WAITING }
-  └── controller: UserId     (= soi-même par défaut ; = hôte si procuration)
+  └── controller: string?           (external ID occupant le siège ; null si libre)
 ```
 
-note Participant /= User (pour activer les actions par procuration (l'hote qui joue pour un participant)
+note Participant ≠ User : le découplage permet les sièges anonymes et, plus
+tard, les actions par procuration (l'hôte qui joue pour un participant).
 
 ```
 Round
   ├── id: RoundId
   ├── status: enum { INIT, IN_PROGRESS, RESOLVED }
-  ├── pots: Pot[]                   (créés selon EconomyPolicy)
+  ├── pots: Pot[]                   (pot principal ; side-pots à venir)
   ├── turnState: TurnState
   ├── actionLog: Action[]           (flux ordonné, append-only)
   └── méthodes:
       + applyForcedBets()
       + submitAction(Action)        (valide via ActionDef + TurnPolicy)
-      + resolve()                   (via EndPolicy)
-```
-
-```
-Pot (le contenant des mises d'un round)
-  ├── id: PotId
-  ├── amount: number
-  ├── eligibleParticipants: ParticipantId[]   (pour les side-pots)
-  └── méthodes:
-      + addContribution()
-      + awardTo()
+      + resolve()                   (via EndPolicy ; répartit les pots)
 ```
 
 ```
 TurnState (l'état "qui agit maintenant", piloté par TurnPolicy)
-  ├── activeParticipant: ParticipantId
-  ├── interruptionOpen: bool
-  ├── pendingClaims: InterruptionClaim[]   (Mahjong : réclamations concurrentes)
+  ├── activeParticipant, interruptionOpen, pendingClaims
   └── méthodes:
-      + computeLegalActions(): ActionDef[]  (filtre le catalogue selon l'état)
-      + advance()                            (prochain joueur)
-      + openInterruptionWindow()
-      + resolveClaims()                      (priorité entre voleurs)
+      + computeLegalActions()       (fenêtre ouverte ⇒ actions interruptives uniquement)
+      + advance()                   (siège suivant encore ACTIVE — un fold passe au
+                                     siège d'après, jamais retour au siège 0)
+      + openInterruptionWindow() / resolveClaims()
 ```
 
-```
-Action (l'événement atomique, une instance exécutée d'un ActionDef)
-  ├── id: ActionId
-  ├── participantId: ParticipantId
-  ├── definitionId: string          (référence l'ActionDef du catalogue)
-  ├── amount: number?
-  ├── timestamp
-  └── (immuable une fois loggée)
-```
+Pendant qu'une fenêtre d'interruption est ouverte, **seules** les actions
+`grantsInterruption` sont acceptées (pour tout le monde) : les réclamations en
+attente ne peuvent pas être écrasées par une action normale.
 
 # Runtime API (POC)
 
-La couche runtime expose les objets ci-dessus via **REST** (inspection /
-scripts) et **WebSocket** (gameplay live). Elle suppose que l'appelant est déjà
-authentifié.
-
-## Couches (DDD)
+## Couches
 
 ```
 GameRuntimeController (REST)  ─┐
-GameRuntimeGateway (WebSocket) ┘→ GameRuntimeService ── registre en mémoire
-                                    (Map<GameSessionId, GameSession>)
-                                    │
-                                    └→ agrégat domaine : GameSession
-                                         └ Round └ TurnState / Pot / Action
+GameRuntimeGateway (WebSocket) ┘→ GameRoomsService ── orchestration + persistance
+                                    │        (claims, soldes, closed_at, rooms Redis)
+                                    ├→ GameSessionsService (lignes game_sessions/participants)
+                                    └→ GameRuntimeService ── registre en mémoire
+                                         └ agrégat : GameSession └ Round └ TurnState / Pot
 ```
 
-- **GameRuntimeService** — l'unique « game manager ». Détient les sessions en
-  mémoire, orchestre le cycle de vie, résout les identités et évalue les
-  conditions de fin. Aucune dépendance HTTP/WS.
+- **GameRuntimeService** — runtime pur en mémoire, sans transport ni BDD.
+- **GameRoomsService** — ouvre les rooms _lazily_ depuis les lignes persistées
+  (config + sièges + soldes), resynchronise les soldes à chaque résolution de
+  round et à la fermeture, ferme une room vide après 5 minutes (occupation des
+  sockets suivie dans Redis core). Une room fermée pour inactivité se ré-ouvre
+  au prochain fetch **sans perte d'état**.
 - **game-runtime.snapshot.ts** — read-models plats (`GameSnapshot`). Seules ces
-  formes franchissent la frontière du module ; les objets domaine restent
-  internes.
-- **game-runtime.presets.ts** — `defaultGameConfig()` (preset type poker).
-- La persistance BDD n'est pas branchée : à la résolution d'un round, un
-  artefact JSON est écrit dans `./debug/round-<id>.json` (dossier gitignoré).
+  formes franchissent la frontière du module.
 
-## Modèle d'identité (Participant ⇔ external ID)
+## Identité & autorisations
 
-Un `Participant` est découplé de l'utilisateur. Il est dérivé d'un **external
-ID** : l'UUID de l'utilisateur connecté ou l'ID de session d'un anonyme. Le
-service tient une table `external ID → participantId` par session, donc rejoindre
-avec le même external ID est idempotent (survit aux reconnexions).
-
-> POC : l'external ID est fourni dans le payload. Une version durcie le dériverait
-> du handshake de session Passport.
+- Le **claim** et les **actions** portent l'external ID (POC ; une version
+  durcie le dériverait du handshake de session Passport).
+- Les transitions d'hôte — `start_round`, `resolve`, `close` — sont réservées
+  à l'occupant du siège `HOST` : côté REST c'est l'utilisateur connecté
+  (`req.user`), côté WebSocket l'identité attachée au socket.
+- Tous les payloads WebSocket sont validés avec les schémas Zod partagés,
+  comme les routes REST.
 
 ## Endpoints REST — routeur `games`
 
-| Méthode & route                     | Rôle                                          |
-| ----------------------------------- | --------------------------------------------- |
-| `POST /games`                       | Crée une session (`config` optionnelle)       |
-| `GET /games/:id`                    | Snapshot courant                              |
-| `POST /games/:id/participants`      | Rejoint (`externalId`, `displayName`, solde)  |
-| `POST /games/:id/rounds`            | Démarre un round + applique les forced bets   |
-| `POST /games/:id/actions`           | Soumet une action (`externalId`, `definitionId`, `amount?`) |
-| `POST /games/:id/rounds/current/resolve` | Résolution manuelle par l'hôte (`winnerExternalIds?`) |
-| `DELETE /games/:id`                 | Ferme la session                              |
+| Méthode & route                          | Rôle                                                         |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `POST /games`                            | Crée la session + ses sièges (`config` optionnelle)          |
+| `GET /games/:id`                         | Snapshot courant (ré-ouvre la room au besoin)                |
+| `POST /games/:id/participants`           | Réclame un siège (`externalId`, `displayName`, `seatIndex?`) |
+| `POST /games/:id/rounds`                 | **Hôte** — démarre un round + forced bets                    |
+| `POST /games/:id/actions`                | Soumet une action (`externalId`, `definitionId`, `amount?`)  |
+| `POST /games/:id/rounds/current/resolve` | **Hôte** — résolution manuelle (`winnerExternalIds?`)        |
+| `DELETE /games/:id`                      | **Hôte** — ferme la session                                  |
 
 ## Événements WebSocket (socket.io)
 
@@ -165,15 +178,15 @@ tous les sockets de la room `game:<id>`.
 
 **Émis par le client :**
 
-| Message            | Payload                                          |
-| ------------------ | ------------------------------------------------ |
-| `game:create`      | `{ externalId, displayName, initialBalance?, config? }` |
-| `game:join`        | `{ gameId, externalId, displayName, initialBalance? }`  |
-| `game:start_round` | `{ gameId }`                                     |
-| `game:action`      | `{ gameId, definitionId, amount? }` (identité = socket) |
-| `game:resolve`     | `{ gameId, winnerExternalIds? }`                 |
-| `game:snapshot`    | `{ gameId }`                                     |
-| `game:close`       | `{ gameId }`                                     |
+| Message            | Payload                                                           |
+| ------------------ | ----------------------------------------------------------------- |
+| `game:create`      | `{ externalId (uuid), config? }` — le siège hôte est déjà réclamé |
+| `game:join`        | `{ gameId, externalId, displayName, seatIndex? }`                 |
+| `game:start_round` | `{ gameId }` (hôte)                                               |
+| `game:action`      | `{ gameId, definitionId, amount? }` (identité = socket)           |
+| `game:resolve`     | `{ gameId, winnerExternalIds? }` (hôte)                           |
+| `game:snapshot`    | `{ gameId }`                                                      |
+| `game:close`       | `{ gameId }` (hôte)                                               |
 
 **Diffusés par le serveur (room) :** `game:participant_joined`,
 `game:round_started`, `game:action_applied`, `game:round_resolved`
@@ -181,25 +194,26 @@ tous les sockets de la room `game:<id>`.
 
 ## Flux de gameplay type
 
-1. `game:create` → l'hôte crée et rejoint (seat 0).
-2. `game:join` ×N → les autres participants rejoignent.
-3. `game:start_round` → forced bets appliqués (blindes), round `IN_PROGRESS`.
-4. `game:action` (check / call / raise / fold) chacun à son tour ; `fold`
-   retire le participant du round (`foldsParticipant`).
-5. Après chaque action, les conditions de fin sont évaluées.
-6. Condition remplie → le round est résolu, les pots attribués, un
-   `game:round_resolved` est diffusé et un `debug/round-<id>.json` est écrit.
+1. `game:create` → l'hôte crée la session ; ses sièges existent déjà, le sien
+   (seat 0) est réclamé.
+2. `game:join` ×N → les joueurs réclament les sièges libres.
+3. `game:start_round` (hôte) → forced bets appliqués, round `IN_PROGRESS` ;
+   les sièges non réclamés restent `WAITING` hors du round.
+4. `game:action` (check / call / raise / fold) chacun à son tour.
+5. Après chaque action, les conditions de fin sont évaluées ; à la résolution,
+   les pots sont répartis et **les soldes sont persistés en BDD**.
+6. `game:close` (hôte) → soldes finaux persistés, `closed_at` posé : la
+   session ne se ré-ouvrira plus.
 
 ## Conditions de fin (v0)
 
 - `MANUAL_HOST` — l'hôte termine via `game:resolve` / l'endpoint REST.
-- `AUTOMATIC` + condition `LAST_PLAYER_STANDING` — dès qu'il ne reste qu'un seul
-  contendant (les autres ayant `fold`), le round se résout automatiquement et le
-  survivant remporte le(s) pot(s).
+- `AUTOMATIC` + condition `LAST_PLAYER_STANDING` — dès qu'il ne reste qu'un
+  seul contendant, le round se résout et le survivant remporte le(s) pot(s).
 
 ## Preset par défaut
 
-Économie : pot `SINGLE`, `ABSTRACT_BALANCE`, `WINNER_TAKES_ALL`, forced bets
-small blind (5) / big blind (10). Catalogue : `check`, `call`, `raise`, `fold`.
-Tours : `SEQUENTIAL` / `CLOCKWISE`. Fin : `AUTOMATIC` +
-`LAST_PLAYER_STANDING`.
+Sièges : 4 (hôte inclus), solde 1000. Économie : pot `SINGLE`,
+`ABSTRACT_BALANCE`, `WINNER_TAKES_ALL`, forced bets small blind (5) / big
+blind (10). Catalogue : `check`, `call`, `raise`, `fold`. Tours : `SEQUENTIAL`
+/ `CLOCKWISE`. Fin : `AUTOMATIC` + `LAST_PLAYER_STANDING`.
