@@ -45,8 +45,10 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.28",
     "@nestjs/swagger": "^11.4.4",
-    "@tokenizer/shared": "github:T0kenizer/shared#main",
+    "@nestjs/websockets": "^11.1.28",
+    "@tokenizer/shared": "github:T0kenizer/shared#feature/game-core",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.1.0",
     "connect-redis": "^9.0.0",
@@ -63,7 +65,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.35.3",
-    "slugify": "^1.6.9"
+    "slugify": "^1.6.9",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
