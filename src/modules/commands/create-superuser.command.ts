@@ -9,6 +9,32 @@ interface CreateSuperUserOptions {
   role?: UserRole;
 }
 
+/** Surfaces the schema's own message instead of a generic "invalid". */
+const validateEmail = (value: string) => {
+  const result = createUserDataSchema
+    .pick({ email: true })
+    .safeParse({ email: value });
+  return result.success || result.error.issues[0]?.message || 'Invalid email';
+};
+
+const validateUsername = (value: string) => {
+  const result = createUserDataSchema
+    .pick({ username: true })
+    .safeParse({ username: value });
+  return (
+    result.success || result.error.issues[0]?.message || 'Invalid username'
+  );
+};
+
+const validatePassword = (value: string) => {
+  const result = createUserDataSchema
+    .pick({ password: true })
+    .safeParse({ password: value });
+  return (
+    result.success || result.error.issues[0]?.message || 'Invalid password'
+  );
+};
+
 @Command({
   name: 'create-superuser',
   description: 'Create a superuser account',
@@ -37,43 +63,46 @@ export class CreateSuperUserCommand extends CommandRunner {
     _passedParams: string[],
     options: CreateSuperUserOptions = {},
   ): Promise<void> {
-    const email = await input({
-      message: 'Email:',
-      validate: (value) =>
-        createUserDataSchema.pick({ email: true }).safeParse({ email: value })
-          .success || 'Invalid email',
-    });
+    try {
+      const email = await input({
+        message: 'Email:',
+        validate: validateEmail,
+      });
 
-    const username = await input({
-      message: 'Username:',
-      validate: (value) =>
-        createUserDataSchema
-          .pick({ username: true })
-          .safeParse({ username: value }).success || 'Invalid username',
-    });
+      const username = await input({
+        message: 'Username:',
+        validate: validateUsername,
+      });
 
-    const passwordValue = await password({
-      message: 'Password:',
-      mask: true,
-      validate: (value) =>
-        createUserDataSchema
-          .pick({ password: true })
-          .safeParse({ password: value }).success || 'Invalid password',
-    });
+      const passwordValue = await password({
+        message: 'Password:',
+        mask: true,
+        validate: validatePassword,
+      });
 
-    const passwordConfirm = await password({
-      message: 'Password (again):',
-      mask: true,
-      validate: (value) => value === passwordValue || 'Passwords do not match',
-    });
+      await password({
+        message: 'Password (again):',
+        mask: true,
+        validate: (value) =>
+          value === passwordValue || 'Passwords do not match',
+      });
 
-    await this.usersService.create({
-      email,
-      username,
-      password: passwordConfirm,
-      role: options.role ?? UserRole.Admin,
-    });
+      await this.usersService.create({
+        email,
+        username,
+        password: passwordValue,
+        role: options.role ?? UserRole.Admin,
+        confirmedAt: new Date(),
+      });
 
-    console.log(`Superuser "${username}" created successfully!`);
+      console.log(`Superuser "${username}" created successfully!`);
+    } catch (error) {
+      // Ctrl+C in a prompt is a deliberate abort, not a failure.
+      if (error instanceof Error && error.name === 'ExitPromptError') return;
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to create superuser: ${message}`);
+      process.exitCode = 1;
+    }
   }
 }

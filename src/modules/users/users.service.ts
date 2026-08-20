@@ -140,7 +140,8 @@ export class UsersService {
 
     await em.flush();
 
-    await this.accountConfirmationsService.sendConfirmation(user);
+    if (!user.confirmedAt)
+      await this.accountConfirmationsService.sendConfirmation(user);
 
     return user;
   }
