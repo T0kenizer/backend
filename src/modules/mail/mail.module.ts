@@ -21,6 +21,9 @@ import { join } from 'path';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         transport: {
+          pool: true,
+          maxConnections: Constants.SMTP_MAX_CONNECTIONS,
+          maxMessages: Constants.SMTP_MAX_MESSAGES,
           host: config.get('SMTP_HOST'),
           port: config.get('SMTP_PORT'),
           secure: false,
