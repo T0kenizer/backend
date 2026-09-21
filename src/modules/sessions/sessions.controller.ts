@@ -32,7 +32,7 @@ export class SessionsController {
   @UseGuards(AuthGuard('local'))
   @HttpCode(HttpStatus.CREATED)
   public create(@Body() data: DTOs.CreateSessionData, @Req() req: Request) {
-    return this.sessionsService.create(req, data.rememberMe);
+    return this.sessionsService.create(req, data.stayConnected);
   }
 
   @Get('/current')
