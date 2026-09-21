@@ -7,6 +7,7 @@ import * as Constants from '@modules/game-core/game-core.constants';
 import { GameLifecycleConsumer } from '@modules/game-core/game-lifecycle.consumer';
 import { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
 import { GamePresenceService } from '@modules/game-core/game-presence.service';
+import { GameQrService } from '@modules/game-core/game-qr.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { GameRuntimeController } from '@modules/game-core/game-runtime.controller';
 import { GameRuntimeGateway } from '@modules/game-core/game-runtime.gateway';
@@ -36,6 +37,8 @@ import { JwtModule } from '@nestjs/jwt';
  *   decision on a queue, so a restart cannot lose them.
  * - `GameTokensService` issues the per-player token that authorises in-game
  *   actions and reconnections.
+ * - `GameQrService` renders the join QR on demand. It stores nothing: the symbol
+ *   is a pure function of the session uuid and the public origin.
  * - `GameRoomsService` orchestrates all of the above.
  */
 @Module({
@@ -64,6 +67,7 @@ import { JwtModule } from '@nestjs/jwt';
     GameLifecycleService,
     GameLifecycleConsumer,
     GameTokensService,
+    GameQrService,
   ],
   exports: [GameRuntimeService, GameRoomsService, GameSessionsService],
 })

@@ -16,6 +16,23 @@ export const JOIN_CODE_TTL_SECONDS = 30 * 60;
 export const JOIN_CODE_MAX_ATTEMPTS = 10;
 
 /**
+ * The join QR encodes a link keyed by the session uuid, so its bytes never
+ * change for a given room — it is rendered on demand and cached like a file's
+ * content rather than stored anywhere.
+ *
+ * `M` corrects a quarter of the symbol, which is what a code read off a TV
+ * across a room at an angle needs; `H` would buy resilience nobody is short of
+ * at the cost of a denser symbol. Four modules of quiet zone is the spec
+ * minimum — below it, scanners lose the finder patterns against the screen.
+ */
+export const JOIN_QR_ERROR_CORRECTION = 'M';
+export const JOIN_QR_WIDTH_PX = 512;
+export const JOIN_QR_MARGIN_MODULES = 4;
+
+/** A year, like the files module: the payload behind a uuid is immutable. */
+export const JOIN_QR_MAX_AGE_SECONDS = 31_536_000;
+
+/**
  * Grace period for a single player. A page refresh drops the socket and opens a
  * new one within a second or two; anything under this window must not read as
  * the player leaving.

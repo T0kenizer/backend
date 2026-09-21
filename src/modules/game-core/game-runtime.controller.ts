@@ -1,4 +1,5 @@
 import * as Constants from '@modules/game-core/game-core.constants';
+import { GameQrService } from '@modules/game-core/game-qr.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import * as DTOs from '@modules/game-core/game-runtime.dtos';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
@@ -9,6 +10,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -17,10 +19,12 @@ import {
   Patch,
   Post,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
 
 /**
@@ -40,6 +44,7 @@ export class GameRuntimeController {
   constructor(
     private readonly rooms: GameRoomsService,
     private readonly tokens: GameTokensService,
+    private readonly qr: GameQrService,
   ) {}
 
   @Post()
@@ -99,6 +104,45 @@ export class GameRuntimeController {
   @ZodSerializerDto(DTOs.RetrieveGameSessionResponse)
   public get(@Param('uuid', ParseUUIDPipe) uuid: string) {
     return this.rooms.ensureRoomOpen(uuid);
+  }
+
+  /**
+   * The room's join QR, rendered on demand.
+   *
+   * Served like a file's content rather than as JSON: it is an image behind a
+   * uuid, so clients point an `<img>` at it and the browser does the caching.
+   * The symbol encodes the join link, which is keyed by that same uuid and
+   * therefore never changes — hence the immutable year, and the ETag that lets
+   * a revalidation cost 304 bytes instead of a re-render.
+   *
+   * The session is looked up first so an unknown uuid 404s rather than handing
+   * back a perfectly scannable QR for a room that does not exist.
+   */
+  @Get(':uuid/qrcode')
+  public async getQrCode(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Headers('if-none-match') ifNoneMatch: Optional<string>,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Optional<StreamableFile>> {
+    await this.rooms.publicRoomView(uuid);
+    const { png, etag } = await this.qr.render(uuid);
+
+    res.setHeader(
+      'Cache-Control',
+      `public, max-age=${Constants.JOIN_QR_MAX_AGE_SECONDS}, immutable`,
+    );
+    res.setHeader('ETag', etag);
+
+    if (ifNoneMatch === etag) {
+      res.status(HttpStatus.NOT_MODIFIED);
+      return;
+    }
+
+    return new StreamableFile(png, {
+      type: 'image/png',
+      length: png.length,
+      disposition: `inline; filename="tokenizer-${uuid}.png"`,
+    });
   }
 
   /**
