@@ -43,25 +43,28 @@ export class LoggingInterceptor implements NestInterceptor {
         const user: Optional<User> = request.user;
         const status = error.getStatus?.() || error.status || 500;
 
-        this.logger.error(
-          `${request.method} ${request.originalUrl} ${duration}ms - ${status} - requested by ${user?.email || 'ANONYMOUS'}`,
-        );
-        if (status >= 500) {
-          this.logger.error(error);
+        const line = `${request.method} ${request.originalUrl} ${duration}ms - ${status} - requested by ${user?.email || 'ANONYMOUS'}`;
 
-          if (this.debug) {
-            return throwError(
-              () =>
-                new HttpException(
-                  {
-                    statusCode: status,
-                    message: error.message,
-                    error: error.stack,
-                  },
-                  status,
-                ),
-            );
-          }
+        if (status < 500) {
+          this.logger.warn(line);
+          return throwError(() => error);
+        }
+
+        this.logger.error(line);
+        this.logger.error(error);
+
+        if (this.debug) {
+          return throwError(
+            () =>
+              new HttpException(
+                {
+                  statusCode: status,
+                  message: error.message,
+                  error: error.stack,
+                },
+                status,
+              ),
+          );
         }
         return throwError(() => error);
       }),

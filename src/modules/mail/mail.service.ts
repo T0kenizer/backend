@@ -1,23 +1,38 @@
+import { ConfigService } from '@modules/config/config.service';
 import * as Constants from '@modules/mail/mail.constants';
 import * as Types from '@modules/mail/mail.types';
+import { isMailConfigured } from '@modules/mail/mail.utils';
 import { MailerService } from '@nestjs-modules/mailer';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { JobsOptions } from 'bullmq';
 
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
+  private readonly logger = new Logger(MailService.name);
+
   constructor(
     private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
     @InjectQueue(Constants.MAIL_QUEUE)
     private readonly queue: Types.MailQueue,
   ) {}
+
+  onModuleInit(): void {
+    if (isMailConfigured(this.configService)) return;
+
+    this.logger.warn(
+      'Mailing is disabled: SMTP_HOST and SMTP_FROM_DOMAIN are not set, so no account mail will be delivered',
+    );
+  }
 
   private async enqueue<Name extends Types.MailJob>(
     name: Name,
     data: Types.MailJobData[Name],
     opts?: JobsOptions,
   ): Promise<void> {
+    if (!isMailConfigured(this.configService)) return;
+
     await this.queue.add(name, data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 },

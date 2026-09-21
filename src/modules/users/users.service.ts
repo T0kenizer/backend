@@ -14,6 +14,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
 import bcrypt from 'bcrypt';
 import slugify from 'slugify';
+import { z } from 'zod';
 
 const HASH_ROUNDS = 10;
 
@@ -52,6 +53,14 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     return user;
+  }
+
+  public async findUserByUuid(uuid: string): Promise<Nullable<User>> {
+    // Callers may pass an anonymous client id here (not a uuid at all), so
+    // this must not reach the Postgres uuid cast with a malformed value.
+    if (!z.uuid().safeParse(uuid).success) return null;
+
+    return this.usersRepository.findOne({ uuid }, { populate: ['avatar'] });
   }
 
   public async findOrCreateFromGoogle(
@@ -152,23 +161,6 @@ export class UsersService {
   ): Promise<User> {
     const em = this.usersRepository.getEntityManager();
 
-    if (data.username !== undefined && data.username !== user.username) {
-      if (BANNED_USERNAMES.includes(data.username))
-        throw new FieldBadRequestException({
-          username: `Username "${data.username}" is not allowed`,
-        });
-
-      const existing = await this.usersRepository.findOne({
-        username: data.username,
-      });
-      if (existing)
-        throw new FieldConflictException({
-          username: `Username ${data.username} is already in use`,
-        });
-
-      user.username = data.username;
-    }
-
     const previousEmail = user.email;
     const emailChanged =
       data.email !== undefined && data.email !== previousEmail;
@@ -214,8 +206,8 @@ export class UsersService {
 
     await em.flush();
 
-    // Runs last so a rejected username or email leaves the password untouched;
-    // it flushes and notifies on its own.
+    // Runs last so a rejected email leaves the password untouched; it flushes
+    // and notifies on its own.
     if (data.password !== undefined)
       await this.updatePassword(user, data.password);
 
