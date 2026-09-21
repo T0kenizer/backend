@@ -2,6 +2,7 @@ import { ConfigService } from '@modules/config/config.service';
 import * as Constants from '@modules/mail/mail.constants';
 import { MailConsumer } from '@modules/mail/mail.consumer';
 import { MailService } from '@modules/mail/mail.service';
+import { isMailConfigured, sender } from '@modules/mail/mail.utils';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { BullModule } from '@nestjs/bullmq';
@@ -19,37 +20,45 @@ import { join } from 'path';
     }),
     MailerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        transport: {
-          pool: true,
-          maxConnections: Constants.SMTP_MAX_CONNECTIONS,
-          maxMessages: Constants.SMTP_MAX_MESSAGES,
-          host: config.get('SMTP_HOST'),
-          port: config.get('SMTP_PORT'),
-          secure: false,
-          auth: config.get('SMTP_USER')
+      useFactory: (config: ConfigService) => {
+        const configured = isMailConfigured(config);
+
+        return {
+          transport: configured
             ? {
-                user: config.get('SMTP_USER'),
-                pass: config.get('SMTP_PASSWORD'),
+                pool: true,
+                maxConnections: Constants.SMTP_MAX_CONNECTIONS,
+                maxMessages: Constants.SMTP_MAX_MESSAGES,
+                host: config.get('SMTP_HOST'),
+                port: config.get('SMTP_PORT'),
+                secure: false,
+                auth: config.get('SMTP_USER')
+                  ? {
+                      user: config.get('SMTP_USER'),
+                      pass: config.get('SMTP_PASSWORD'),
+                    }
+                  : undefined,
               }
-            : undefined,
-        },
-        defaults: {
-          from: config.get('SMTP_FROM'),
-        },
-        template: {
-          dir: join(__dirname, 'templates'),
-          adapter: new HandlebarsAdapter(),
-          options: { strict: true },
-        },
-        options: {
-          layout: 'partials/base',
-          partials: {
-            dir: join(__dirname, 'templates', 'partials'),
+            : { jsonTransport: true },
+          defaults: {
+            from: configured
+              ? sender(config, Constants.DEFAULT_SENDER)
+              : undefined,
+          },
+          template: {
+            dir: join(__dirname, 'templates'),
+            adapter: new HandlebarsAdapter(),
             options: { strict: true },
           },
-        },
-      }),
+          options: {
+            layout: 'partials/base',
+            partials: {
+              dir: join(__dirname, 'templates', 'partials'),
+              options: { strict: true },
+            },
+          },
+        };
+      },
     }),
   ],
   providers: [MailConsumer, MailService],

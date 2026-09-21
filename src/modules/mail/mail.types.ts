@@ -1,5 +1,9 @@
 import { Job, Queue } from 'bullmq';
 
+export enum Sender {
+  Noreply = 'noreply',
+}
+
 export enum MailJob {
   AccountConfirmation = 'account-confirmation',
   AccountConfirmed = 'account-confirmed',
