@@ -19,8 +19,8 @@ const config: Config = {
     '!src/**/*.d.ts',
   ],
   coverageDirectory: './coverage',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '^@commands/(.*)$': '<rootDir>/src/modules/commands/$1',
     '^@decorators/(.*)$': '<rootDir>/src/decorators/$1',
