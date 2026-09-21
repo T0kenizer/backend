@@ -40,7 +40,7 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 
 ## Architecture
 
-**Framework stack:** NestJS 11, MikroORM 6 (PostgreSQL), Passport.js (session-based auth), Redis (three instances: sessions, cache, queues), BullMQ (background jobs), Firebase Storage (file uploads, image processing via sharp), Socket.IO (`@nestjs/websockets`), Zod (validation + serialization via nestjs-zod).
+**Framework stack:** NestJS 11, MikroORM 6 (PostgreSQL), Passport.js (session-based auth), Redis (three instances: sessions, cache, queues), BullMQ (background jobs), Firebase Storage (file uploads, image processing via sharp), Socket.IO (`@nestjs/websockets`), Zod (validation + serialization via nestjs-zod), `@nestjs/jwt` (per-player game tokens — pinned to **v11**, the CJS build; v12 is ESM-only and ts-jest cannot load it), `@nestjs/throttler` (rate limiting).
 
 **Path aliases** (configured in `tsconfig.json`, mirrored in `jest.config.ts`):
 
@@ -66,7 +66,16 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 - `files/` — file uploads to Firebase Storage: the `File` row is persisted as `Pending` before the transfer (crash-safe), images are processed with sharp, upload runs sync or async (`FILES_QUEUE` + `FilesConsumer`).
 - `firebase/` — `FirebaseService` wrapping firebase-admin (Storage bucket access).
 - `redis/` — three clients exposed as injectable services in `services/`: `RedisService` (core, session storage), `RedisQueueService` (BullMQ connection — always pass its `bullConnection` adapter, never the raw client), `RedisCacheService`. Each has its own host/port env vars.
-- `game-core/` — game runtime exposed over REST (`GameRuntimeController`, POC) and WebSocket (`GameRuntimeGateway`, Socket.IO events `game:*`, payloads validated with the shared Zod schemas). `GameRuntimeService` holds the in-memory aggregate (`runtime/`: game-session, round, participant, pot, turn-state); `GameSessionsService` owns the persisted rows (`GameSession` + its pre-declared `GameParticipant` seats); `GameRoomsService` orchestrates both — lazy room opening (hydrating seats/balances from the DB), balance persistence on round resolution, host-only transitions, idle closure after 5 minutes. See `documentation.md` in the module.
+- `game-core/` — game runtime exposed over REST (`GameRuntimeController`) and WebSocket (`GameRuntimeGateway`, Socket.IO events `game:*`, payloads validated with the shared Zod schemas). Three supports, three roles, no overlap — this is the module's structuring constraint:
+  - **PostgreSQL is the source of truth** (`GameSessionsService`): status, seats, balances, claims, activity. `GameRuntimeService` holds an in-memory aggregate (`runtime/`) that is a **cache** of those rows, rebuilt whenever a room opens.
+  - **Redis carries the ephemeral 6-digit join code and nothing else** (`GameCodesService`): `game_code:{code}` → uuid under a sliding 30-minute TTL, plus the reverse arm so a room can display its code. Minted with `SET NX EX` and re-drawn on collision. There is **no `join_code` column** — a session that loses its code stays playable by uuid.
+  - **Presence is read off the Socket.IO adapter** (`GamePresenceService`). Every read goes through `isRoomEmpty(uuid)` / `roomSize(uuid)`: going multi-instance means replacing those two method bodies and nothing else.
+  - **Deferred decisions run on BullMQ** (`GameLifecycleService` + `GameLifecycleConsumer`, `GAME_LIFECYCLE_QUEUE`), never `setTimeout` — a restart used to drop the timers and leak rooms open forever. Two independent graces (15s per player, 5min per empty room, job ids derived from the uuid so a reconnection cancels by name), plus a 10-minute stale sweep as the backstop. Every job **re-reads presence before acting**.
+  - **In-game identity is a signed player token** (`GameTokensService`), issued on join and carrying `{gameUuid, participantId}`. It replaced a client-supplied `externalId` that the snapshot broadcast to the whole room, letting anyone at the table act as anyone else. Snapshots now expose `claimed`/`connected` and never the holder. REST reads it from the `x-player-token` header; the socket replays it once via `game:attach` and authorises everything else from what the socket was bound to.
+  - `GameRoomsService` orchestrates all of the above. Socket rooms are keyed **exclusively by session uuid**, never by the code.
+
+  See `documentation.md` in the module — it also documents, in section 7, exactly what the single-instance assumption costs and what multi-instance would require.
+
 - `commands/` — `nest-commander` CLI commands (e.g. `create-superuser`). Entry point is `src/cli.ts`.
 - `health.controller.ts` — `GET /health` (liveness) and `GET /health/ready` (readiness: pings Postgres and the three Redis clients with a 1s timeout).
 
@@ -89,7 +98,9 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 
 **DTOs** use `nestjs-zod` (`createZodDto`) and pull their schemas from the `@tokenizer/shared` package (GitHub: `T0kenizer/shared`). Validation is applied globally via `ZodValidationPipe`; serialization via `ZodSerializerInterceptor`.
 
-**Background jobs:** BullMQ is wired in `AppModule` via `BullModule.forRootAsync` using `RedisQueueService.bullConnection` (a node-redis adapter — required so BullMQ doesn't fall back to requiring ioredis). Queues: `MAIL_QUEUE` (`MailConsumer`) and `FILES_QUEUE` (`FilesConsumer`). Consumers extend `WorkerHost`; DB-touching consumers use `@CreateRequestContext()`.
+**Background jobs:** BullMQ is wired in `AppModule` via `BullModule.forRootAsync` using `RedisQueueService.bullConnection` (a node-redis adapter — required so BullMQ doesn't fall back to requiring ioredis). Queues: `MAIL_QUEUE` (`MailConsumer`), `FILES_QUEUE` (`FilesConsumer`) and `GAME_LIFECYCLE_QUEUE` (`GameLifecycleConsumer`). Consumers extend `WorkerHost`; DB-touching consumers use `@CreateRequestContext()`. Repeatable jobs go through `queue.upsertJobScheduler(<fixed id>, …)`, not `add(…, { repeat })`, so a restart loop converges on one schedule instead of stacking them.
+
+**Rate limiting:** `ThrottlerModule` is registered globally in `AppModule` with a permissive ceiling (120/min); routes that need a real limit set their own with `@Throttle`. The two join-code routes are the ones that matter: a 6-digit code is a 10^6 space, so an unthrottled lookup is an enumeration oracle. They also return an identical 404 for an unknown code and an expired one — distinguishing them would confirm which codes were ever issued.
 
 **Shared package:** `@tokenizer/shared` is installed from a **GitHub branch**, pinned in `package.json` (`github:T0kenizer/shared#<branch>`). Constants (field lengths, banned usernames), enums (`UserRole`, `FileStatus`, …) and the Zod schemas behind the DTOs live there. Changing a contract means changing shared first, then `npm run update:shared` here. When a feature branch needs a matching shared branch, repin `package.json` — and when merging two such branches, the pin is a conflict git cannot see: pick the shared branch that contains **both** sides.
 
@@ -153,7 +164,7 @@ After modifying an entity, run `npm run makemigrations` to generate a migration,
 - **Unit tests** live in `*.spec.ts` files co-located with the file they test (e.g. `users.service.ts` → `users.service.spec.ts` in the same directory). **E2E tests** live in `test/` (`npm run test:e2e`, config in `test/jest-e2e.json`).
 - `jest.setup.ts` is wired through `setupFilesAfterEnv`: it silences every `Logger` level and clears mock history before each test. Keep the two in sync — a `jest.setup.ts` that is not referenced from `jest.config.ts` fails silently, tests still green.
 - `unbound-method` is disabled for spec files in `eslint.config.mjs`: passing `Logger.prototype.error` to an assertion is the point.
-- The Jest config maps `@factories/*` to `test/factories/` and excludes modules/constants/entities/types from coverage.
+- The Jest config maps `@factories/*` to `test/factories/` and excludes modules/constants/entities/types from coverage. The `package.json` mapping is **anchored** (`^package\.json$`): unanchored, it also caught dependencies resolving their own `../package.json` — sharp reads `config.libvips` from it and throws at import time, so any spec that transitively loaded sharp failed to run.
 - After changing `paths` in `tsconfig.json`, mirror them in `jest.config.ts` **and** `test/jest-e2e.json`.
 - Run a single spec file: `npx jest src/modules/users/users.service.spec.ts`.
 

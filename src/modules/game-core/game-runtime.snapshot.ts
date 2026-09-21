@@ -17,16 +17,21 @@ import type {
  */
 
 /**
- * Raw runtime participant fields, before `displayName`/`photoUrl` are resolved
- * (account/config fallback needs DB access the runtime doesn't have —
- * `GameRoomsService` finishes the job before this crosses the wire).
+ * Raw runtime participant fields, before `displayName`/`photoUrl`/`connected`
+ * are resolved — the first two need DB access the runtime doesn't have, the
+ * third is a presence read. `GameRoomsService` finishes all three before this
+ * crosses the wire.
+ *
+ * `controller` is carried here for that resolution step and dropped on the way
+ * out: a snapshot reaches every socket in the room, so the identity holding a
+ * seat must not survive into it.
  */
 export interface RawParticipantSnapshot extends Omit<
   ParticipantSnapshot,
-  'displayName' | 'photoUrl'
+  'displayName' | 'photoUrl' | 'connected' | 'claimed'
 > {
   displayNameOverride: Nullable<string>;
-  hasPhotoOverride: boolean;
+  controller: Nullable<string>;
 }
 
 function serializeParticipant(p: Participant): RawParticipantSnapshot {
@@ -34,7 +39,6 @@ function serializeParticipant(p: Participant): RawParticipantSnapshot {
     id: p.id,
     role: p.role,
     displayNameOverride: p.displayNameOverride,
-    hasPhotoOverride: p.hasPhotoOverride,
     balance: p.balance,
     seatIndex: p.seatIndex,
     status: p.status,
@@ -72,14 +76,14 @@ function serializeRound(round: Round): RoundSnapshot {
 }
 
 /**
- * The runtime aggregate has no notion of the join code (a DB/room concern) or
- * of the final `displayName`/`photoUrl` (account/config fallback resolved
- * outside it); callers finish both when the snapshot crosses into
- * REST/WebSocket responses.
+ * The runtime aggregate knows nothing of the join code (an ephemeral Redis
+ * concern), the session name (a DB column), or the resolved participant fields;
+ * callers finish all of them when the snapshot crosses into REST/WebSocket
+ * responses.
  */
 export type RuntimeSnapshot = Omit<
   GameSnapshot,
-  'joinCode' | 'participants'
+  'joinCode' | 'name' | 'participants'
 > & {
   participants: RawParticipantSnapshot[];
 };

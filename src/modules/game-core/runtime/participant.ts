@@ -14,8 +14,6 @@ export interface ParticipantParams {
    * outside the runtime, which has no DB access).
    */
   displayNameOverride: Nullable<string>;
-  /** Whether an explicit photo override is stored (bytes live in Redis). */
-  hasPhotoOverride: boolean;
   balance: number;
   controller: Nullable<string>;
 }
@@ -29,10 +27,13 @@ export class Participant {
   readonly seatIndex: number;
   readonly role: ParticipantRole;
   displayNameOverride: Nullable<string>;
-  hasPhotoOverride: boolean;
   balance: number;
   status: ParticipantStatus;
-  /** External identity controlling the seat; null while unclaimed. */
+  /**
+   * Who holds the seat: a user uuid when signed in, an opaque anonymous id
+   * otherwise. Internal to the module — it is never serialized into a snapshot,
+   * because a snapshot goes to everyone in the room.
+   */
   controller: Nullable<string>;
 
   constructor(params: ParticipantParams) {
@@ -40,7 +41,6 @@ export class Participant {
     this.seatIndex = params.seatIndex;
     this.role = params.role;
     this.displayNameOverride = params.displayNameOverride;
-    this.hasPhotoOverride = params.hasPhotoOverride;
     this.balance = params.balance;
     this.controller = params.controller;
     this.status = params.controller
@@ -53,25 +53,23 @@ export class Participant {
   }
 
   /**
-   * Occupies the seat. `displayName`/`hasPhoto` are only set when explicitly
-   * provided — otherwise the seat keeps falling back to the account/config
-   * default, resolved at snapshot time.
+   * Occupies the seat. `displayName` is only set when explicitly provided —
+   * otherwise the seat keeps falling back to the account/config default,
+   * resolved at snapshot time.
    */
-  claim(externalId: string, displayName?: string, hasPhoto?: boolean): void {
-    this.controller = externalId;
+  claim(holderId: string, displayName?: string): void {
+    this.controller = holderId;
     if (displayName !== undefined) this.displayNameOverride = displayName;
-    if (hasPhoto !== undefined) this.hasPhotoOverride = hasPhoto;
     if (this.status === ParticipantStatus.Waiting) {
       this.status = ParticipantStatus.Active;
     }
   }
 
   /**
-   * Renames/re-photos the seat. `undefined` fields are left unchanged; `null`
-   * clears the override (falls back to the account/config default again).
+   * Renames the seat. `undefined` leaves it unchanged; `null` clears the
+   * override (falls back to the account/config default again).
    */
-  update(displayName?: Nullable<string>, hasPhoto?: Nullable<boolean>): void {
+  update(displayName?: Nullable<string>): void {
     if (displayName !== undefined) this.displayNameOverride = displayName;
-    if (hasPhoto !== undefined) this.hasPhotoOverride = hasPhoto ?? false;
   }
 }

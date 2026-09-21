@@ -1,5 +1,8 @@
+import * as Constants from '@modules/game-core/game-core.constants';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import * as DTOs from '@modules/game-core/game-runtime.dtos';
+import { GameTokensService } from '@modules/game-core/game-tokens.service';
+import { RawPlayerToken } from '@modules/game-core/player-token.decorator';
 import { AuthenticatedGuard } from '@modules/sessions/authenticated.guard';
 import {
   Body,
@@ -14,41 +17,84 @@ import {
   Patch,
   Post,
   Req,
-  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
 
 /**
- * POC REST router for the GameCore runtime. Mirrors the WebSocket gateway's
- * capabilities for out-of-band inspection and scripted testing; live gameplay
- * is expected to run over the socket. Host-only transitions (start, resolve,
- * close) are checked against the logged-in user; seat claiming and actions
- * still carry the POC `externalId` identity so anonymous players can play.
- * Reading room state (the two `GET`s) is public — a guest must see the table
- * before they've claimed a seat, let alone signed in.
+ * REST router for the game runtime.
+ *
+ * This is where identity is established. Creating a game and taking a seat go
+ * through here because both need the session cookie, and both answer with the
+ * player token that the socket then replays — live gameplay runs over the
+ * socket, but it never mints identity of its own.
+ *
+ * The two code-facing routes are rate-limited well below the global default. A
+ * 6-digit code is a 10^6 space: left open, either route is an enumeration
+ * oracle, and the cheaper one would map out every live room in minutes.
  */
 @Controller('games')
 export class GameRuntimeController {
-  constructor(private readonly rooms: GameRoomsService) {}
+  constructor(
+    private readonly rooms: GameRoomsService,
+    private readonly tokens: GameTokensService,
+  ) {}
 
   @Post()
   @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.CreateGameSessionResponse)
   public create(@Body() data: DTOs.CreateGameSessionData, @Req() req: Request) {
-    return this.rooms.createGame(req.user!.uuid, data.config);
+    return this.rooms.createGame(req.user!.uuid, data.config, data.name);
   }
 
-  /** Resolves a 6-character join code to its game session (opens the room). */
-  @Get('by-code/:joinCode')
-  @ZodSerializerDto(DTOs.RetrieveGameSessionResponse)
-  public getByJoinCode(@Param('joinCode') joinCode: string) {
-    return this.rooms.ensureRoomOpenByJoinCode(joinCode);
+  /**
+   * Resolves a dictated code to the session uuid behind it — the one and only
+   * thing a code is for. Everything afterwards is keyed by that uuid.
+   *
+   * A code that never existed and one that has expired get the same 404, with
+   * the same body. Telling them apart would confirm which codes were ever
+   * issued, which is exactly what an enumerator is after.
+   */
+  @Post('join-by-code')
+  @Throttle({
+    default: {
+      limit: Constants.JOIN_BY_CODE_LIMIT,
+      ttl: Constants.JOIN_BY_CODE_TTL_MS,
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.JoinByCodeResponse)
+  public async joinByCode(@Body() data: DTOs.JoinByCodeData) {
+    const gameUuid = await this.rooms.resolveCode(data.code);
+    if (!gameUuid) throw new NotFoundException('Invalid or expired code');
+
+    return { gameUuid };
   }
 
-  /** Fetching a game lazily (re)opens its room from the persisted session. */
+  /**
+   * The public view behind a code: what the game is called, whether it is still
+   * open, how full it is. Never a player's data, and never the uuid — seeing a
+   * room and being let into it are two different privileges.
+   */
+  @Get('room-by-code/:code')
+  @Throttle({
+    default: {
+      limit: Constants.ROOM_BY_CODE_LIMIT,
+      ttl: Constants.ROOM_BY_CODE_TTL_MS,
+    },
+  })
+  @ZodSerializerDto(DTOs.RetrieveRoomByCodeResponse)
+  public async getRoomByCode(@Param('code') code: string) {
+    const gameUuid = await this.rooms.resolveCode(code);
+    if (!gameUuid) throw new NotFoundException('Invalid or expired code');
+
+    return this.rooms.publicRoomView(gameUuid);
+  }
+
+  /** Fetching a game (re)opens its room from the persisted session. */
   @Get(':uuid')
   @ZodSerializerDto(DTOs.RetrieveGameSessionResponse)
   public get(@Param('uuid', ParseUUIDPipe) uuid: string) {
@@ -56,57 +102,46 @@ export class GameRuntimeController {
   }
 
   /**
-   * Public: seat photos must be viewable by every player in the room, guests
-   * included. Serves the data-URL captured live from the camera (no upload
-   * endpoint — stored in Redis as part of the room, not the DB).
+   * Takes a seat and issues the player token.
+   *
+   * Open to guests on purpose — an anonymous player must be able to sit down.
+   * When the caller is signed in, their uuid becomes the seat's holder, so they
+   * find the same seat again on any device; a returning player instead presents
+   * the token they were issued.
    */
-  @Get(':uuid/participants/:participantId/photo')
-  public async getSeatPhoto(
-    @Param('uuid', ParseUUIDPipe) uuid: string,
-    @Param('participantId', ParseUUIDPipe) participantId: string,
-  ) {
-    const dataUrl = await this.rooms.getSeatPhotoByGameId(uuid, participantId);
-    if (!dataUrl) throw new NotFoundException('Seat photo not found');
-
-    const match = /^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(dataUrl);
-    if (!match) throw new NotFoundException('Seat photo not found');
-    const [, mimeType, base64] = match;
-
-    return new StreamableFile(Buffer.from(base64, 'base64'), {
-      type: mimeType,
-    });
-  }
-
   @Post(':uuid/participants')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.ClaimSeatResponse)
-  public claimSeat(
+  public joinGame(
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.ClaimSeatData,
+    @Req() req: Request,
   ) {
-    return this.rooms.claimSeat(uuid, data);
+    return this.rooms.joinGame(uuid, data, req.user?.uuid);
   }
 
-  /** Renames/re-photos the seat held by `data.externalId`. */
+  /** Renames the seat the token belongs to. */
   @Patch(':uuid/participants/current')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.UpdateSeatResponse)
   public updateSeat(
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.UpdateSeatData,
+    @RawPlayerToken() token: string,
   ) {
-    return this.rooms.updateSeat(uuid, data);
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.updateSeat(uuid, participantId, data);
   }
 
   @Post(':uuid/rounds')
-  @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.StartRoundResponse)
   public startRound(
     @Param('uuid', ParseUUIDPipe) uuid: string,
-    @Req() req: Request,
+    @RawPlayerToken() token: string,
   ) {
-    return this.rooms.startRound(uuid, req.user!.uuid);
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.startRound(uuid, participantId);
   }
 
   @Post(':uuid/actions')
@@ -115,34 +150,36 @@ export class GameRuntimeController {
   public submitAction(
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.SubmitActionData,
+    @RawPlayerToken() token: string,
   ) {
-    return this.rooms.submitAction(uuid, data);
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.submitAction(uuid, participantId, data);
   }
 
   @Post(':uuid/rounds/current/resolve')
-  @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.ResolveRoundResponse)
   public resolveRound(
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() data: DTOs.ResolveRoundData,
-    @Req() req: Request,
+    @RawPlayerToken() token: string,
   ) {
+    const { participantId } = this.tokens.verify(token, uuid);
     return this.rooms.resolveRound(
       uuid,
-      req.user!.uuid,
-      data.winnerExternalIds,
+      participantId,
+      data.winnerParticipantIds,
     );
   }
 
   @Delete(':uuid')
-  @UseGuards(AuthenticatedGuard)
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.CloseGameSessionResponse)
   public close(
     @Param('uuid', ParseUUIDPipe) uuid: string,
-    @Req() req: Request,
+    @RawPlayerToken() token: string,
   ) {
-    return this.rooms.closeGame(uuid, req.user!.uuid);
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.closeGame(uuid, participantId);
   }
 }

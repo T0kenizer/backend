@@ -16,7 +16,8 @@ import { SessionsModule } from '@modules/sessions/sessions.module';
 import { UsersModule } from '@modules/users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
 
 @Module({
@@ -40,6 +41,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
         autoLoadEntities: true,
       }),
     }),
+    // A permissive global ceiling; the routes that need a real limit — the
+    // ones a 6-digit code can reach — set their own with @Throttle.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     CommandsModule,
     ConfigModule,
     MailModule,
@@ -53,6 +57,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     GameCoreModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor }],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

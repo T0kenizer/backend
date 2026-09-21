@@ -75,13 +75,18 @@ export class GameRuntimeService {
   ): { snapshot: RuntimeSnapshot; participantId: string } {
     const session = this.getSessionOrThrow(gameId);
     const seat = session.claimSeat(params);
-    this.logger.log(
-      `Seat ${seat.seatIndex} of ${gameId} claimed by ${params.externalId}`,
-    );
+    this.logger.log(`Seat ${seat.seatIndex} of ${gameId} claimed`);
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
-  /** Renames/re-photos the seat held by the caller's external identity. */
+  /** The seat a holder identity already occupies, if any. */
+  findSeatByHolder(gameId: string, holderId: string): Optional<string> {
+    return this.getSessionOrThrow(gameId).seats.find(
+      (p) => p.controller === holderId,
+    )?.id;
+  }
+
+  /** Renames the seat the caller's token binds them to. */
   updateSeat(
     gameId: string,
     params: UpdateSeatParams,
@@ -107,6 +112,7 @@ export class GameRuntimeService {
    */
   submitAction(
     gameId: string,
+    callerParticipantId: string,
     params: SubmitActionData,
   ): { snapshot: RuntimeSnapshot; resolution?: RoundResolution } {
     const session = this.getSessionOrThrow(gameId);
@@ -115,7 +121,7 @@ export class GameRuntimeService {
     }
 
     const participant = session.resolveActingParticipant(
-      params.externalId,
+      callerParticipantId,
       params.targetParticipantId,
     );
     session.currentRound.submitAction({
@@ -131,7 +137,7 @@ export class GameRuntimeService {
   /** Host-driven termination for MANUAL_HOST end policies. */
   resolveRound(
     gameId: string,
-    winnerExternalIds: string[] = [],
+    winnerParticipantIds: string[] = [],
   ): { snapshot: RuntimeSnapshot; resolution: RoundResolution } {
     const session = this.getSessionOrThrow(gameId);
     const round = session.currentRound;
@@ -139,8 +145,8 @@ export class GameRuntimeService {
       throw new BadRequestException('No active round to resolve');
     }
 
-    const winners = winnerExternalIds.length
-      ? winnerExternalIds.map((ext) => session.resolveActingParticipant(ext).id)
+    const winners = winnerParticipantIds.length
+      ? winnerParticipantIds.map((id) => session.seatOrThrow(id).id)
       : round.contenders().map((p) => p.id);
 
     round.resolve(winners);
@@ -156,10 +162,9 @@ export class GameRuntimeService {
     return snapshot;
   }
 
-  /** Whether the external identity is the session's owner (the host). */
-  isHost(gameId: string, externalId: string): boolean {
-    const session = this.getSessionOrThrow(gameId);
-    return session.ownerUuid === externalId;
+  /** Whether the seat carries host authority. */
+  isHost(gameId: string, participantId: string): boolean {
+    return this.getSessionOrThrow(gameId).isHost(participantId);
   }
 
   private getSessionOrThrow(gameId: string): GameSession {

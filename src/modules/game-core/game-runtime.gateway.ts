@@ -1,10 +1,20 @@
+import {
+  GamePresenceService,
+  type GameSocketState,
+} from '@modules/game-core/game-presence.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
-import { BadRequestException, Logger } from '@nestjs/common';
+import { GameTokensService } from '@modules/game-core/game-tokens.service';
+import {
+  BadRequestException,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -14,44 +24,19 @@ import {
   GAME_SERVER_EVENTS,
 } from '@tokenizer/shared/constants/games.constants';
 import {
-  claimSeatDataSchema,
-  gameConfigSchema,
-  joinCodeSchema,
+  attachSocketDataSchema,
   resolveRoundDataSchema,
   updateSeatDataSchema,
 } from '@tokenizer/shared/schemas';
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 
-/**
- * Client payloads, validated with the shared schemas so the WebSocket transport
- * enforces the same contracts as the REST routes. Payloads identify the room by
- * its 6-character join code, not the DB uuid.
- */
-const createPayloadSchema = z.object({
-  // Creating a game persists an owned session: a real user uuid is required.
-  externalId: z.uuid(),
-  config: gameConfigSchema.optional(),
-});
-const joinPayloadSchema = claimSeatDataSchema.extend({
-  joinCode: joinCodeSchema,
-});
-const gamePayloadSchema = z.object({ joinCode: joinCodeSchema });
 const actionPayloadSchema = z.object({
-  joinCode: joinCodeSchema,
   // Host only: acts on behalf of an unclaimed seat instead of the caller's own.
   targetParticipantId: z.uuid().optional(),
   definitionId: z.string().min(1),
   amount: z.number().int().nonnegative().optional(),
 });
-const resolvePayloadSchema = resolveRoundDataSchema.extend({
-  joinCode: joinCodeSchema,
-});
-// Identity comes from the socket, not the payload — a client cannot rename
-// another seat by supplying a different externalId.
-const updateSeatPayloadSchema = updateSeatDataSchema
-  .omit({ externalId: true })
-  .extend({ joinCode: joinCodeSchema });
 
 function parsePayload<Schema extends z.ZodType>(
   schema: Schema,
@@ -67,103 +52,105 @@ function parsePayload<Schema extends z.ZodType>(
   return result.data;
 }
 
-/** Per-connection state stashed on `socket.data`. */
-interface SocketState {
-  externalId?: string;
-  joinCode?: string;
-}
-
-function stateOf(client: Socket): SocketState {
-  return client.data as SocketState;
-}
-
-function room(joinCode: string): string {
-  return `game:${joinCode}`;
-}
-
 /**
- * WebSocket transport for live gameplay. A client connects, claims a seat in a
- * game room, and drives the round via `game:action`. State is broadcast to
- * every socket in the room after each transition. Room lifecycle (lazy opening
- * from the DB, idle closure) and persistence are delegated to
- * `GameRoomsService`. This POC carries identity in the payload (`externalId`);
- * a hardened build would derive it from the session handshake.
+ * WebSocket transport for live gameplay.
+ *
+ * The socket carries no identity of its own and mints none. Creating a game and
+ * taking a seat are authenticated HTTP calls; each hands back a signed player
+ * token, and `game:attach` is the client replaying that token to bind this
+ * connection to its seat. Every later message is authorised from what the
+ * socket was bound to — never from its payload, which the client controls.
+ *
+ * Rooms are keyed by session uuid. The 6-digit code is resolved to a uuid
+ * before any of this and never appears here: it is a lookup key for humans, not
+ * a room name.
  */
 @WebSocketGateway({ cors: { origin: true, credentials: true } })
 export class GameRuntimeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(GameRuntimeGateway.name);
 
   @WebSocketServer()
   private readonly server!: Server;
 
-  constructor(private readonly rooms: GameRoomsService) {}
+  constructor(
+    private readonly rooms: GameRoomsService,
+    private readonly presence: GamePresenceService,
+    private readonly tokens: GameTokensService,
+  ) {}
+
+  /** Presence reads the adapter, so it needs the server the moment it exists. */
+  afterInit(server: Server): void {
+    this.presence.bind(server);
+  }
 
   handleConnection(client: Socket): void {
     this.logger.log(`Socket connected: ${client.id}`);
   }
 
+  /**
+   * A dropped socket is not a departure. The room is asked what it looks like
+   * _after_ this socket is gone — Socket.IO has already removed it by now — and
+   * the grace periods take it from there.
+   */
   handleDisconnect(client: Socket): void {
-    this.logger.log(`Socket disconnected: ${client.id}`);
-    void this.rooms.unbindSocket(client.id).catch((err: Error) => {
-      this.logger.error(`Failed to unbind socket ${client.id}: ${err.message}`);
-    });
+    const { gameUuid, participantId } = this.presence.stateOf(client);
+    if (!gameUuid || !participantId) return;
+
+    void this.rooms
+      .onPlayerDisconnected(gameUuid, participantId)
+      .catch((err: Error) => {
+        this.logger.error(
+          `Failed to handle disconnect for ${client.id}: ${err.message}`,
+        );
+      });
   }
 
   /**
-   * Creates a fresh session owned by the caller. The host seat (seat 0) is
-   * claimed at creation, so the socket only needs to be attached to the room.
+   * Binds this socket to a room. The token is the only thing consulted: it
+   * names the session and the seat, and it was signed by us.
    */
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.CREATE)
-  create(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.ATTACH)
+  attach(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
-      const data = parsePayload(createPayloadSchema, payload);
-      const snapshot = await this.rooms.createGame(
-        data.externalId,
-        data.config,
-      );
-      await this.attach(client, snapshot, data.externalId);
+      const data = parsePayload(attachSocketDataSchema, payload);
+      const { participantId } = this.tokens.verify(data.token, data.gameUuid);
+
+      // Opening the room first means a token for a closed session is refused
+      // before the socket is ever added to it.
+      await this.rooms.ensureRoomOpen(data.gameUuid);
+      await this.presence.attach(client, data.gameUuid, participantId);
+      await this.rooms.onPlayerConnected(data.gameUuid, participantId);
+
+      const snapshot = await this.rooms.ensureRoomOpen(data.gameUuid);
       this.broadcast(
-        snapshot.joinCode,
+        data.gameUuid,
         GAME_SERVER_EVENTS.PARTICIPANT_JOINED,
         snapshot,
       );
-      return snapshot;
+      // The seat comes back with the snapshot: a client returning from a
+      // refresh learns which chair is its own without unpacking the token.
+      return { snapshot, participantId };
     });
   }
 
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.JOIN)
-  join(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
-    return this.guard(client, async () => {
-      const data = parsePayload(joinPayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      const snapshot = await this.rooms.claimSeat(gameId, data);
-      await this.attach(client, snapshot, data.externalId);
-      this.broadcast(
-        data.joinCode,
-        GAME_SERVER_EVENTS.PARTICIPANT_JOINED,
-        snapshot,
-      );
-      return snapshot;
-    });
-  }
-
-  /** Renames/re-photos the caller's own seat. */
+  /** Renames the caller's own seat. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.UPDATE_SEAT)
   updateSeat(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: unknown,
   ) {
     return this.guard(client, async () => {
-      const data = parsePayload(updateSeatPayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      const snapshot = await this.rooms.updateSeat(gameId, {
-        ...data,
-        externalId: this.identityOf(client),
-      });
+      const data = parsePayload(updateSeatDataSchema, payload);
+      const { gameUuid, participantId } = this.boundState(client);
+      const snapshot = await this.rooms.updateSeat(
+        gameUuid,
+        participantId,
+        data,
+      );
       this.broadcast(
-        data.joinCode,
+        gameUuid,
         GAME_SERVER_EVENTS.PARTICIPANT_UPDATED,
         snapshot,
       );
@@ -173,18 +160,11 @@ export class GameRuntimeGateway
 
   /** Host only. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.START_ROUND)
-  startRound(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: unknown,
-  ) {
+  startRound(@ConnectedSocket() client: Socket) {
     return this.guard(client, async () => {
-      const data = parsePayload(gamePayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      const snapshot = await this.rooms.startRound(
-        gameId,
-        this.identityOf(client),
-      );
-      this.broadcast(data.joinCode, GAME_SERVER_EVENTS.ROUND_STARTED, snapshot);
+      const { gameUuid, participantId } = this.boundState(client);
+      const snapshot = await this.rooms.startRound(gameUuid, participantId);
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_STARTED, snapshot);
       return snapshot;
     });
   }
@@ -193,20 +173,16 @@ export class GameRuntimeGateway
   action(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
       const data = parsePayload(actionPayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      const { snapshot, resolution } = await this.rooms.submitAction(gameId, {
-        externalId: this.identityOf(client),
-        targetParticipantId: data.targetParticipantId,
-        definitionId: data.definitionId,
-        amount: data.amount,
-      });
-      this.broadcast(
-        data.joinCode,
-        GAME_SERVER_EVENTS.ACTION_APPLIED,
-        snapshot,
+      const { gameUuid, participantId } = this.boundState(client);
+      const { snapshot, resolution } = await this.rooms.submitAction(
+        gameUuid,
+        participantId,
+        data,
       );
+
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ACTION_APPLIED, snapshot);
       if (resolution) {
-        this.broadcast(data.joinCode, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
+        this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
           ...snapshot,
           resolution,
         });
@@ -219,14 +195,14 @@ export class GameRuntimeGateway
   @SubscribeMessage(GAME_CLIENT_MESSAGES.RESOLVE)
   resolve(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
-      const data = parsePayload(resolvePayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
+      const data = parsePayload(resolveRoundDataSchema, payload ?? {});
+      const { gameUuid, participantId } = this.boundState(client);
       const { snapshot, resolution } = await this.rooms.resolveRound(
-        gameId,
-        this.identityOf(client),
-        data.winnerExternalIds,
+        gameUuid,
+        participantId,
+        data.winnerParticipantIds,
       );
-      this.broadcast(data.joinCode, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
         ...snapshot,
         resolution,
       });
@@ -234,60 +210,40 @@ export class GameRuntimeGateway
     });
   }
 
-  /** Fetching a snapshot lazily (re)opens the room from the persisted session. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.SNAPSHOT)
-  snapshot(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  snapshot(@ConnectedSocket() client: Socket) {
     return this.guard(client, async () => {
-      const data = parsePayload(gamePayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      return this.rooms.ensureRoomOpen(gameId);
+      const { gameUuid } = this.boundState(client);
+      return this.rooms.ensureRoomOpen(gameUuid);
     });
   }
 
   /** Host only. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.CLOSE)
-  close(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  close(@ConnectedSocket() client: Socket) {
     return this.guard(client, async () => {
-      const data = parsePayload(gamePayloadSchema, payload);
-      const gameId = await this.rooms.resolveGameId(data.joinCode);
-      const snapshot = await this.rooms.closeGame(
-        gameId,
-        this.identityOf(client),
-      );
-      this.broadcast(
-        data.joinCode,
-        GAME_SERVER_EVENTS.SESSION_CLOSED,
-        snapshot,
-      );
+      const { gameUuid, participantId } = this.boundState(client);
+      const snapshot = await this.rooms.closeGame(gameUuid, participantId);
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.SESSION_CLOSED, snapshot);
       return snapshot;
     });
   }
 
-  /** Joins the Socket.IO room and registers the occupancy in Redis. */
-  private async attach(
+  /** What this socket was bound to at attach; nothing works before that. */
+  private boundState(
     client: Socket,
-    snapshot: { joinCode: string },
-    externalId: string,
-  ): Promise<void> {
-    const state = stateOf(client);
-    state.externalId = externalId;
-    state.joinCode = snapshot.joinCode;
-    await client.join(room(snapshot.joinCode));
-    await this.rooms.bindSocket(snapshot.joinCode, client.id, externalId);
-  }
-
-  private identityOf(client: Socket): string {
-    const externalId = stateOf(client).externalId;
-    if (!externalId) {
-      throw new BadRequestException(
-        'Socket has not joined a game (missing identity)',
+  ): Required<Pick<GameSocketState, 'gameUuid' | 'participantId'>> {
+    const { gameUuid, participantId } = this.presence.stateOf(client);
+    if (!gameUuid || !participantId) {
+      throw new UnauthorizedException(
+        'Socket is not attached to a game; send game:attach first',
       );
     }
-    return externalId;
+    return { gameUuid, participantId };
   }
 
-  private broadcast(joinCode: string, event: string, payload: unknown): void {
-    this.server.to(room(joinCode)).emit(event, payload);
+  private broadcast(gameUuid: string, event: string, payload: unknown): void {
+    this.presence.broadcast(gameUuid, event, payload);
   }
 
   private async guard<T>(

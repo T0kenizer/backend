@@ -19,7 +19,6 @@ function buildSeats(count: number, initialBalance = 1000): SeatInit[] {
     seatIndex,
     role: seatIndex === 0 ? ParticipantRole.Host : ParticipantRole.Player,
     displayNameOverride: null,
-    hasPhotoOverride: false,
     balance: initialBalance,
     controller: null,
   }));
@@ -32,6 +31,17 @@ function activeOf(snapshot: RuntimeSnapshot): Nullable<string> {
 describe('GameRuntimeService', () => {
   let service: GameRuntimeService;
 
+  /** The seat a holder occupies — what every action is addressed by now. */
+  function seatOf(holderId: string, gameId = GAME_ID): string {
+    const id = service.findSeatByHolder(gameId, holderId);
+    if (!id) throw new Error(`No seat held by ${holderId}`);
+    return id;
+  }
+
+  function hostSeatId(gameId = GAME_ID): string {
+    return seatOf(HOST_UUID, gameId);
+  }
+
   beforeEach(() => {
     service = new GameRuntimeService();
     service.registerSession(
@@ -40,21 +50,23 @@ describe('GameRuntimeService', () => {
       HOST_UUID,
       buildSeats(4),
     );
+    // Creating a game seats its owner in seat 0; the runtime tests start from
+    // that same state, since host authority is carried by the seat.
+    service.claimSeat(GAME_ID, { holderId: HOST_UUID, seatIndex: 0 });
   });
 
-  it('opens with pre-declared seats, all unclaimed with no override', () => {
-    // The config/account fallback for displayName+photo is resolved one layer
-    // up (`GameRoomsService`, which has DB access); the runtime only tracks
+  it('opens with pre-declared seats, only the host one claimed', () => {
+    // The config/account fallback for displayName is resolved one layer up
+    // (`GameRoomsService`, which has DB access); the runtime only tracks
     // whether an explicit override exists.
     const snapshot = service.snapshot(GAME_ID);
 
     expect(snapshot.participants).toHaveLength(4);
     expect(snapshot.participants[0]).toMatchObject({
       role: ParticipantRole.Host,
-      status: ParticipantStatus.Waiting,
-      controller: null,
+      status: ParticipantStatus.Active,
+      controller: HOST_UUID,
       displayNameOverride: null,
-      hasPhotoOverride: false,
     });
     for (const seat of snapshot.participants.slice(1)) {
       expect(seat).toMatchObject({
@@ -68,16 +80,16 @@ describe('GameRuntimeService', () => {
   describe('claimSeat', () => {
     it('assigns the first free seat and is idempotent per identity', () => {
       const first = service.claimSeat(GAME_ID, {
-        externalId: 'bob',
+        holderId: 'bob',
         displayName: 'Bob',
       });
       const again = service.claimSeat(GAME_ID, {
-        externalId: 'bob',
+        holderId: 'bob',
         displayName: 'Bobby',
       });
 
       expect(first.participantId).toBe(again.participantId);
-      const bob = again.snapshot.participants.find((p) => p.seatIndex === 0);
+      const bob = again.snapshot.participants.find((p) => p.seatIndex === 1);
       expect(bob).toMatchObject({
         controller: 'bob',
         displayNameOverride: 'Bob', // re-claims keep the original name
@@ -87,7 +99,7 @@ describe('GameRuntimeService', () => {
 
     it('claims an explicit seat and rejects taken or unknown ones', () => {
       service.claimSeat(GAME_ID, {
-        externalId: 'bob',
+        holderId: 'bob',
         displayName: 'Bob',
         seatIndex: 3,
       });
@@ -96,14 +108,14 @@ describe('GameRuntimeService', () => {
 
       expect(() =>
         service.claimSeat(GAME_ID, {
-          externalId: 'carol',
+          holderId: 'carol',
           displayName: 'Carol',
           seatIndex: 3,
         }),
       ).toThrow(BadRequestException);
       expect(() =>
         service.claimSeat(GAME_ID, {
-          externalId: 'carol',
+          holderId: 'carol',
           displayName: 'Carol',
           seatIndex: 9,
         }),
@@ -115,9 +127,10 @@ describe('GameRuntimeService', () => {
       config.seating.allowMidGameClaims = false;
       const lockedGame = '33333333-3333-4333-8333-333333333333';
       service.registerSession(lockedGame, config, HOST_UUID, buildSeats(4));
-      service.claimSeat(lockedGame, { externalId: 'bob', displayName: 'Bob' });
+      service.claimSeat(lockedGame, { holderId: HOST_UUID, seatIndex: 0 });
+      service.claimSeat(lockedGame, { holderId: 'bob', displayName: 'Bob' });
       service.claimSeat(lockedGame, {
-        externalId: 'carol',
+        holderId: 'carol',
         displayName: 'Carol',
       });
 
@@ -126,40 +139,40 @@ describe('GameRuntimeService', () => {
       // New identities are locked out...
       expect(() =>
         service.claimSeat(lockedGame, {
-          externalId: 'dave',
+          holderId: 'dave',
           displayName: 'Dave',
         }),
       ).toThrow(BadRequestException);
       // ...but a seated player can still re-claim (reconnect)
       const reclaim = service.claimSeat(lockedGame, {
-        externalId: 'bob',
+        holderId: 'bob',
         displayName: 'Bob',
       });
-      expect(reclaim.snapshot.participants[0].controller).toBe('bob');
+      expect(reclaim.snapshot.participants[1].controller).toBe('bob');
     });
 
     it('allows mid-game claims by default, taking over an already-active seat', () => {
-      service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+      service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
       service.claimSeat(GAME_ID, {
-        externalId: 'carol',
+        holderId: 'carol',
         displayName: 'Carol',
       });
       const started = service.startRound(GAME_ID);
-      // Seat 2 is unclaimed but already a contender (the host proxies for it).
-      const seat2Id = started.participants.find((p) => p.seatIndex === 2)!.id;
+      // Seat 3 is unclaimed but already a contender (the host proxies for it).
+      const seat3Id = started.participants.find((p) => p.seatIndex === 3)!.id;
       expect(started.currentRound?.pots[0].eligibleParticipants).toContain(
-        seat2Id,
+        seat3Id,
       );
 
       const { snapshot } = service.claimSeat(GAME_ID, {
-        externalId: 'dave',
+        holderId: 'dave',
         displayName: 'Dave',
-        seatIndex: 2,
+        seatIndex: 3,
       });
 
       const dave = snapshot.participants.find((p) => p.controller === 'dave');
       expect(dave?.status).toBe(ParticipantStatus.Active);
-      expect(dave?.id).toBe(seat2Id);
+      expect(dave?.id).toBe(seat3Id);
       // Dave now controls a seat that was already part of the running round.
       expect(snapshot.currentRound?.pots[0].eligibleParticipants).toContain(
         dave?.id,
@@ -167,12 +180,13 @@ describe('GameRuntimeService', () => {
     });
 
     it('rejects claims when no seat is left', () => {
-      for (const name of ['bob', 'carol', 'dave', 'eve']) {
-        service.claimSeat(GAME_ID, { externalId: name, displayName: name });
+      // Three player seats; the fourth is the host's and is never handed out.
+      for (const name of ['bob', 'carol', 'dave']) {
+        service.claimSeat(GAME_ID, { holderId: name, displayName: name });
       }
       expect(() =>
         service.claimSeat(GAME_ID, {
-          externalId: 'frank',
+          holderId: 'frank',
           displayName: 'Frank',
         }),
       ).toThrow(BadRequestException);
@@ -195,52 +209,51 @@ describe('GameRuntimeService', () => {
   });
 
   it('hands the turn to the next seat when the active participant folds', () => {
-    service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
-    service.claimSeat(GAME_ID, { externalId: 'carol', displayName: 'Carol' });
-    service.claimSeat(GAME_ID, { externalId: 'dave', displayName: 'Dave' });
+    service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
+    service.claimSeat(GAME_ID, { holderId: 'carol', displayName: 'Carol' });
+    service.claimSeat(GAME_ID, { holderId: 'dave', displayName: 'Dave' });
 
     let snapshot = service.startRound(GAME_ID);
-    const [bob, carol, dave] = snapshot.participants;
+    const [host, bob, carol, dave] = snapshot.participants;
+    expect(activeOf(snapshot)).toBe(host.id);
+
+    // The host's own seat acts first, then Bob
+    snapshot = service.submitAction(GAME_ID, hostSeatId(), {
+      definitionId: 'check',
+    }).snapshot;
     expect(activeOf(snapshot)).toBe(bob.id);
 
-    // Bob checks → turn moves to Carol
-    snapshot = service.submitAction(GAME_ID, {
-      externalId: 'bob',
+    snapshot = service.submitAction(GAME_ID, seatOf('bob'), {
       definitionId: 'check',
     }).snapshot;
     expect(activeOf(snapshot)).toBe(carol.id);
 
     // Carol folds → the turn must move to Dave, the *next* seat, not wrap
     // back to seat 0 (the pre-fix behaviour).
-    snapshot = service.submitAction(GAME_ID, {
-      externalId: 'carol',
+    snapshot = service.submitAction(GAME_ID, seatOf('carol'), {
       definitionId: 'fold',
     }).snapshot;
     expect(activeOf(snapshot)).toBe(dave.id);
   });
 
   it('runs a round to a LAST_PLAYER_STANDING resolution', () => {
-    // Only Bob claims a seat; seats 1-3 stay unclaimed but still play — the
-    // host folds them on behalf of their (absent) table players.
-    service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+    // Only Bob claims a player seat; seats 2-3 stay unclaimed but still play —
+    // the host folds them on behalf of their (absent) table players.
+    service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
     const started = service.startRound(GAME_ID);
     expect(started.status).toBe('RUNNING');
     expect(started.currentRound?.pots[0].amount).toBe(15);
-    const [seat1, seat2, seat3] = started.participants.slice(1);
+    const [seat2, seat3] = started.participants.slice(2);
 
-    service.submitAction(GAME_ID, { externalId: 'bob', definitionId: 'check' });
-    service.submitAction(GAME_ID, {
-      externalId: HOST_UUID,
-      targetParticipantId: seat1.id,
-      definitionId: 'fold',
-    });
-    service.submitAction(GAME_ID, {
-      externalId: HOST_UUID,
+    // The host's own seat folds first, then Bob checks, then the host proxies
+    // the two seats nobody claimed.
+    service.submitAction(GAME_ID, hostSeatId(), { definitionId: 'fold' });
+    service.submitAction(GAME_ID, seatOf('bob'), { definitionId: 'check' });
+    service.submitAction(GAME_ID, hostSeatId(), {
       targetParticipantId: seat2.id,
       definitionId: 'fold',
     });
-    const final = service.submitAction(GAME_ID, {
-      externalId: HOST_UUID,
+    const final = service.submitAction(GAME_ID, hostSeatId(), {
       targetParticipantId: seat3.id,
       definitionId: 'fold',
     });
@@ -256,29 +269,31 @@ describe('GameRuntimeService', () => {
     const balances = Object.fromEntries(
       final.snapshot.participants.map((p) => [p.seatIndex, p.balance]),
     );
-    expect(balances).toEqual({ 0: 1010, 1: 990, 2: 1000, 3: 1000 });
+    expect(balances).toEqual({ 0: 995, 1: 1005, 2: 1000, 3: 1000 });
   });
 
   describe('resolveRound', () => {
     it('lets the host award explicit winners', () => {
-      service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+      service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
       service.claimSeat(GAME_ID, {
-        externalId: 'carol',
+        holderId: 'carol',
         displayName: 'Carol',
       });
       service.startRound(GAME_ID);
 
-      const { resolution, snapshot } = service.resolveRound(GAME_ID, ['bob']);
+      const { resolution, snapshot } = service.resolveRound(GAME_ID, [
+        seatOf('bob'),
+      ]);
 
       const bobId = snapshot.participants.find(
         (p) => p.controller === 'bob',
       )!.id;
       expect(resolution.reason).toBe('MANUAL_HOST');
       expect(resolution.winners).toEqual([bobId]);
-      // Bob paid the small blind (5) and wins the 15-chip pot
+      // Bob paid the big blind (10) from seat 1 and wins the 15-chip pot
       expect(
         snapshot.participants.find((p) => p.controller === 'bob')?.balance,
-      ).toBe(1010);
+      ).toBe(1005);
     });
 
     it('rejects when no round is in progress', () => {
@@ -288,50 +303,47 @@ describe('GameRuntimeService', () => {
 
   describe('proxy actions (host acting on behalf of an unclaimed seat)', () => {
     it('lets the host act on an unclaimed seat via targetParticipantId', () => {
-      // Seat 0 (Bob) claimed; seats 1-3 unclaimed — the host proxies them.
-      service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+      // Seat 1 (Bob) claimed; seats 2-3 unclaimed — the host proxies them.
+      service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
       const started = service.startRound(GAME_ID);
-      const seat1 = started.participants.find((p) => p.seatIndex === 1)!;
+      const seat2 = started.participants.find((p) => p.seatIndex === 2)!;
 
-      // Bob (seat 0) acts first...
-      let snapshot = service.submitAction(GAME_ID, {
-        externalId: 'bob',
+      // The host's own seat acts first, then Bob...
+      service.submitAction(GAME_ID, hostSeatId(), { definitionId: 'check' });
+      let snapshot = service.submitAction(GAME_ID, seatOf('bob'), {
         definitionId: 'check',
       }).snapshot;
-      expect(activeOf(snapshot)).toBe(seat1.id);
+      expect(activeOf(snapshot)).toBe(seat2.id);
 
-      // ...then the host, unrelated to any seat itself, proxies seat 1.
-      snapshot = service.submitAction(GAME_ID, {
-        externalId: HOST_UUID,
-        targetParticipantId: seat1.id,
+      // ...then the host proxies seat 2, which nobody claimed.
+      snapshot = service.submitAction(GAME_ID, hostSeatId(), {
+        targetParticipantId: seat2.id,
         definitionId: 'check',
       }).snapshot;
 
-      expect(activeOf(snapshot)).not.toBe(seat1.id);
+      expect(activeOf(snapshot)).not.toBe(seat2.id);
     });
 
     it('rejects a non-host caller targeting another seat', () => {
-      service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+      service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
       const started = service.startRound(GAME_ID);
-      const seat1 = started.participants.find((p) => p.seatIndex === 1)!;
+      const seat2 = started.participants.find((p) => p.seatIndex === 2)!;
 
       expect(() =>
-        service.submitAction(GAME_ID, {
-          externalId: 'bob',
-          targetParticipantId: seat1.id,
+        service.submitAction(GAME_ID, seatOf('bob'), {
+          targetParticipantId: seat2.id,
           definitionId: 'check',
         }),
       ).toThrow(BadRequestException);
     });
 
     it('rejects the host targeting an already-claimed seat', () => {
-      service.claimSeat(GAME_ID, { externalId: 'bob', displayName: 'Bob' });
+      service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
       const started = service.startRound(GAME_ID);
       const bobSeat = started.participants.find((p) => p.controller === 'bob')!;
 
       expect(() =>
-        service.submitAction(GAME_ID, {
-          externalId: HOST_UUID,
+        service.submitAction(GAME_ID, hostSeatId(), {
           targetParticipantId: bobSeat.id,
           definitionId: 'check',
         }),
@@ -339,11 +351,22 @@ describe('GameRuntimeService', () => {
     });
   });
 
-  it('identifies the host by the session owner, regardless of seat claims', () => {
-    expect(service.isHost(GAME_ID, HOST_UUID)).toBe(true);
-    expect(service.isHost(GAME_ID, 'bob')).toBe(false);
+  it('carries host authority on the HOST seat, not on an identity', () => {
+    // Authority is a property of the chair: whoever holds seat 0 has it, and a
+    // player seat never does, however it was claimed.
+    expect(service.isHost(GAME_ID, hostSeatId())).toBe(true);
 
-    service.claimSeat(GAME_ID, { externalId: HOST_UUID, displayName: 'Bob' });
-    expect(service.isHost(GAME_ID, HOST_UUID)).toBe(true);
+    service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
+    expect(service.isHost(GAME_ID, seatOf('bob'))).toBe(false);
+  });
+
+  it('never hands the host seat to a player taking the first free one', () => {
+    service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
+
+    const bob = service
+      .snapshot(GAME_ID)
+      .participants.find((p) => p.controller === 'bob');
+    expect(bob?.seatIndex).toBe(1);
+    expect(bob?.role).toBe(ParticipantRole.Player);
   });
 });

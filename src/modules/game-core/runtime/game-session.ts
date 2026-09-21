@@ -8,6 +8,7 @@ import { Round } from '@modules/game-core/runtime/round';
 import { BadRequestException } from '@nestjs/common';
 import {
   GameSessionStatus,
+  ParticipantRole,
   ParticipantStatus,
   RoundStatus,
   type GameConfig,
@@ -67,7 +68,7 @@ export class GameSession {
 
     const seats = this.seats;
     // Reconnections first: a held seat survives the mid-game lock.
-    const held = seats.find((p) => p.controller === params.externalId);
+    const held = seats.find((p) => p.controller === params.holderId);
     if (held) return held;
 
     if (
@@ -93,61 +94,62 @@ export class GameSession {
         );
       }
     } else {
-      seat = seats.find((p) => !p.claimed);
+      // Never hand out the host seat by default: it carries the authority to
+      // start, resolve and close the game, and it belongs to whoever created
+      // it. Taking it has to be deliberate.
+      seat = seats.find((p) => !p.claimed && p.role !== ParticipantRole.Host);
       if (!seat) {
         throw new BadRequestException('No free seat left');
       }
     }
 
-    seat.claim(params.externalId, params.displayName, params.hasPhoto);
+    seat.claim(params.holderId, params.displayName);
     return seat;
   }
 
-  /** Renames/re-photos the seat held by `externalId`. */
+  /** Renames the seat the caller holds. */
   updateSeat(params: UpdateSeatParams): Participant {
-    const seat = this.seats.find((p) => p.controller === params.externalId);
-    if (!seat) {
-      throw new BadRequestException(
-        `Unknown participant for identity "${params.externalId}"`,
-      );
-    }
-    seat.update(params.displayName, params.hasPhoto);
+    const seat = this.seatOrThrow(params.participantId);
+    seat.update(params.displayName);
     return seat;
+  }
+
+  /** The seat with this id, or a 400 naming it. */
+  seatOrThrow(participantId: string): Participant {
+    const seat = this.participants.get(participantId);
+    if (!seat) {
+      throw new BadRequestException(`Unknown participant "${participantId}"`);
+    }
+    return seat;
+  }
+
+  /** Whether a seat carries host authority. */
+  isHost(participantId: string): boolean {
+    return this.participants.get(participantId)?.role === ParticipantRole.Host;
   }
 
   /**
    * Resolves which seat an action/resolution acts on. With no target, it is the
-   * caller's own seat. The host may instead target an unclaimed seat and act on
-   * its behalf (a companion noting a table player's move) — every declared seat
-   * plays from round one, claimed or not. A claimed seat can only be acted on
-   * by its own controller.
+   * caller's own seat — identified by the participant id their token carries,
+   * so it cannot be another's. The host may instead target an unclaimed seat
+   * and act on its behalf (a companion noting a table player's move); every
+   * declared seat plays from round one, claimed or not.
    */
   resolveActingParticipant(
-    externalId: string,
+    callerParticipantId: string,
     targetParticipantId?: string,
   ): Participant {
     if (targetParticipantId === undefined) {
-      const seat = this.seats.find((p) => p.controller === externalId);
-      if (!seat) {
-        throw new BadRequestException(
-          `Unknown participant for identity "${externalId}"`,
-        );
-      }
-      return seat;
+      return this.seatOrThrow(callerParticipantId);
     }
 
-    if (externalId !== this.ownerUuid) {
+    if (!this.isHost(callerParticipantId)) {
       throw new BadRequestException(
         'Only the host can act on behalf of another seat',
       );
     }
 
-    const seat = this.participants.get(targetParticipantId);
-    if (!seat) {
-      throw new BadRequestException(
-        `Unknown participant "${targetParticipantId}"`,
-      );
-    }
+    const seat = this.seatOrThrow(targetParticipantId);
     if (seat.claimed) {
       throw new BadRequestException(
         'The host can only act on behalf of an unclaimed seat',

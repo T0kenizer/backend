@@ -1,31 +1,24 @@
 import type { ParticipantRole } from '@tokenizer/shared/types';
 
 /**
- * Internal runtime claim params (payloads are validated upstream by the shared
- * `claimSeatDataSchema`).
+ * Internal runtime claim params. `holderId` is the module's own notion of who
+ * occupies a seat — a user uuid when signed in, an opaque anonymous id
+ * otherwise. It stays inside the module: what a client presents is a signed
+ * token, and what the room sees is a boolean.
  */
 export interface ClaimParams {
-  /** External identity: authenticated user UUID or an anonymous client id. */
-  externalId: string;
+  holderId: string;
   /** Explicit override; omit to fall back to the account/config default. */
   displayName?: string;
-  /** Whether an explicit photo override was captured (bytes live in Redis). */
-  hasPhoto?: boolean;
-  /** Seat to claim; omitted to take the first free seat. */
+  /** Seat to claim; omit to take the first free seat. */
   seatIndex?: number;
 }
 
-/**
- * Internal runtime update params (payloads are validated upstream by the shared
- * `updateSeatDataSchema`). Renaming/re-photoing a seat is only allowed for
- * whoever already controls it.
- */
+/** Internal runtime update params; the seat is the caller's own. */
 export interface UpdateSeatParams {
-  externalId: string;
+  participantId: string;
   /** Null clears the override, undefined leaves it unchanged. */
   displayName?: Nullable<string>;
-  /** Null clears the photo override, undefined leaves it unchanged. */
-  hasPhoto?: Nullable<boolean>;
 }
 
 /**
@@ -38,14 +31,7 @@ export interface SeatInit {
   seatIndex: number;
   role: ParticipantRole;
   displayNameOverride: Nullable<string>;
-  hasPhotoOverride: boolean;
   balance: number;
-  /** External identity occupying the seat; null while the seat is free. */
+  /** Identity occupying the seat; null while the seat is free. */
   controller: Nullable<string>;
-}
-
-/** Redis payload mapping a connected socket to its game room. */
-export interface SocketBinding {
-  joinCode: string;
-  externalId: string;
 }

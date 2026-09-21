@@ -4,9 +4,12 @@ import {
   closeGameSessionResponseSchema,
   createGameSessionDataSchema,
   createGameSessionResponseSchema,
+  joinByCodeDataSchema,
+  joinByCodeResponseSchema,
   resolveRoundDataSchema,
   resolveRoundResponseSchema,
   retrieveGameSessionResponseSchema,
+  retrieveRoomByCodeResponseSchema,
   startRoundResponseSchema,
   submitActionDataSchema,
   submitActionResponseSchema,
@@ -22,6 +25,19 @@ export class CreateGameSessionData extends createZodDto(
 ) {}
 export class CreateGameSessionResponse extends createZodDto(
   createGameSessionResponseSchema,
+) {}
+
+/** Join By Code DTOs */
+
+export class JoinByCodeData extends createZodDto(joinByCodeDataSchema) {}
+export class JoinByCodeResponse extends createZodDto(
+  joinByCodeResponseSchema,
+) {}
+
+/** Retrieve Room By Code DTOs */
+
+export class RetrieveRoomByCodeResponse extends createZodDto(
+  retrieveRoomByCodeResponseSchema,
 ) {}
 
 /** Retrieve Game Session DTOs */
