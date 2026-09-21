@@ -32,7 +32,10 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@factories/(.*)$': '<rootDir>/test/factories/$1',
     '^@test/(.*)$': '<rootDir>/test/$1',
-    'package.json': '<rootDir>/package.json',
+    // Anchored: unanchored, this also caught dependencies resolving their own
+    // `../package.json` (sharp reads `config.libvips` from it) and handed them
+    // ours, which fails at import time. Only `src/swagger.ts` wants this.
+    '^package\\.json$': '<rootDir>/package.json',
   },
 };
 
