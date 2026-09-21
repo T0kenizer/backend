@@ -4,7 +4,7 @@ import { RedisService } from '@modules/redis/services/redis.service';
 import { Module } from '@nestjs/common';
 
 @Module({
-  providers: [RedisService, RedisQueueService, RedisCacheService],
-  exports: [RedisService, RedisQueueService, RedisCacheService],
+  providers: [RedisCacheService, RedisQueueService, RedisService],
+  exports: [RedisCacheService, RedisQueueService, RedisService],
 })
 export class RedisModule {}
