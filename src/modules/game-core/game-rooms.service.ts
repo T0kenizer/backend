@@ -700,12 +700,26 @@ export class GameRoomsService {
     };
   }
 
+  /**
+   * Fills in what the runtime cannot know about a seat: the name to show, the
+   * avatar to draw, and whether anybody is in it.
+   *
+   * Every seat answers all three, free ones included. A free chair still has a
+   * name — the one its declaration gave it — and handing the client a blank to
+   * fill in is how the table and the seat picker ended up inventing two
+   * different words for the same empty chair.
+   *
+   * The avatar is an account's or nothing. An anonymous holder has no account
+   * to take one from and a free seat has no holder at all, so both read null
+   * and the client falls back to the same placeholder it uses everywhere else.
+   */
   private async resolveParticipant(
     p: RawParticipantSnapshot,
     config: GameConfig,
     connected: ReadonlySet<string>,
   ): Promise<ParticipantSnapshot> {
-    // Anonymous holders are prefixed, so only a real uuid hits the database.
+    // Anonymous holders are prefixed (`anon:<uuid>`), so only a real account
+    // uuid ever reaches the database.
     const account =
       p.controller && z.uuid().safeParse(p.controller).success
         ? await this.usersService.findUserByUuid(p.controller)
