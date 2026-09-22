@@ -3,10 +3,8 @@ import {
   UnauthorizedException,
   type ExecutionContext,
 } from '@nestjs/common';
+import { PLAYER_TOKEN_HEADER } from '@tokenizer/shared/constants/games.constants';
 import type { Request } from 'express';
-
-/** Header carrying the player token on in-game REST calls. */
-export const PLAYER_TOKEN_HEADER = 'x-player-token';
 
 /**
  * Pulls the raw player token off the request.
