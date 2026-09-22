@@ -95,9 +95,11 @@ describe('GameSessionsService', () => {
       await expect(service.getGameSessionByUuid(GAME_UUID)).rejects.toThrow(
         NotFoundException,
       );
+      // `owner` rides along so a snapshot can answer `canAddSeat`, which
+      // depends on the owner's plan.
       expect(repository.findOne).toHaveBeenCalledWith(
         { uuid: GAME_UUID },
-        { populate: ['participants'] },
+        { populate: ['participants', 'owner'] },
       );
     });
   });

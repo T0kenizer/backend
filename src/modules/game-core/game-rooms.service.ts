@@ -641,6 +641,16 @@ export class GameRoomsService {
       status: session.status,
       joinCode: await this.codes.codeFor(session.uuid),
       participants,
+      // How every stack at this table should be drawn. The rest of the
+      // economy stays server-side; this one field changes what a player sees.
+      chipModel: config.economy.chipModel,
+      // Answered here rather than in the runtime because the plan cap is the
+      // half of the question the aggregate cannot see. A client showing an
+      // "add a seat" button needs both halves, and should not have to learn
+      // the owner's plan to work it out.
+      canAddSeat:
+        this.runtime.canAddSeat(session.uuid) &&
+        participants.length < maxSeatsFor(session.owner.plan),
     };
   }
 

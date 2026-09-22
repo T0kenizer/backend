@@ -79,6 +79,19 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
+  /**
+   * Whether the seating rules permit another seat right now. The plan cap is
+   * the caller's to apply — the runtime has no idea who owns the session.
+   */
+  canAddSeat(gameId: string): boolean {
+    return this.getSessionOrThrow(gameId).canAddSeat;
+  }
+
+  /** {@link canAddSeat}, as a 400 naming the condition that failed. */
+  assertCanAddSeat(gameId: string): void {
+    this.getSessionOrThrow(gameId).assertCanAddSeat();
+  }
+
   /** The seat a holder identity already occupies, if any. */
   findSeatByHolder(gameId: string, holderId: string): Optional<string> {
     return this.getSessionOrThrow(gameId).seats.find(

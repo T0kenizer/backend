@@ -107,6 +107,61 @@ export class GameSession {
     return seat;
   }
 
+  /**
+   * Whether a further seat may be opened at this table right now.
+   *
+   * Three conditions, and each rules out a different kind of mess:
+   *
+   * - The config allows it at all, because a host who fixed the table size meant
+   *   it;
+   * - Every declared seat is already claimed, because an empty chair is the
+   *   answer to "someone else wants to play" — opening a tenth seat while the
+   *   ninth sits free just adds chips nobody is holding;
+   * - No round is under way, because a seat added mid-round would join a rotation
+   *   that has already passed it, and the forced bets it never posted would be
+   *   missing from the pot.
+   *
+   * The plan cap is deliberately _not_ checked here: the runtime does not know
+   * who owns the session, let alone what they pay. `GameRoomsService` applies
+   * that before calling in.
+   */
+  get canAddSeat(): boolean {
+    if (!this.config.seating.allowExtraSeats) return false;
+    if (this.status === GameSessionStatus.Finished) return false;
+    if (
+      this.currentRound &&
+      this.currentRound.status !== RoundStatus.Resolved
+    ) {
+      return false;
+    }
+    return this.seats.every((seat) => seat.claimed);
+  }
+
+  /** {@link canAddSeat}, as a 400 that says which condition failed. */
+  assertCanAddSeat(): void {
+    if (!this.config.seating.allowExtraSeats) {
+      throw new BadRequestException(
+        'This table was set up with a fixed number of seats',
+      );
+    }
+    if (this.status === GameSessionStatus.Finished) {
+      throw new BadRequestException('Session is finished');
+    }
+    if (
+      this.currentRound &&
+      this.currentRound.status !== RoundStatus.Resolved
+    ) {
+      throw new BadRequestException(
+        'A seat can only be added between rounds, not during one',
+      );
+    }
+    if (this.seats.some((seat) => !seat.claimed)) {
+      throw new BadRequestException(
+        'There is still a free seat — a new player should take that one',
+      );
+    }
+  }
+
   /** Renames the seat the caller holds. */
   updateSeat(params: UpdateSeatParams): Participant {
     const seat = this.seatOrThrow(params.participantId);

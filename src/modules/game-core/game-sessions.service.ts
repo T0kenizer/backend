@@ -75,9 +75,12 @@ export class GameSessionsService {
     if (!z.uuid().safeParse(uuid).success)
       throw new NotFoundException('Game session not found');
 
+    // `owner` rides along because every snapshot answers `canAddSeat`, and
+    // that depends on the owner's plan. Without it the relation is a stub
+    // carrying only the uuid, and reading `.plan` off it throws.
     const session = await this.gameSessionsRepository.findOne(
       { uuid },
-      { populate: ['participants'] },
+      { populate: ['participants', 'owner'] },
     );
 
     if (!session) throw new NotFoundException('Game session not found');

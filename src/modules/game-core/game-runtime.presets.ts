@@ -33,6 +33,9 @@ export const GAME_TEMPLATES: readonly GameTemplate[] = [
         ],
         defaultInitialBalance: 1000,
         allowMidGameClaims: true,
+        // A poker night is exactly the case for it: four declared seats, and
+        // a fifth person turning up once they are all taken.
+        allowExtraSeats: true,
       },
       economy: {
         potMode: PotMode.Single,

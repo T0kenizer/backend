@@ -77,13 +77,14 @@ function serializeRound(round: Round): RoundSnapshot {
 
 /**
  * The runtime aggregate knows nothing of the join code (an ephemeral Redis
- * concern), the session name (a DB column), or the resolved participant fields;
- * callers finish all of them when the snapshot crosses into REST/WebSocket
- * responses.
+ * concern), the session name (a DB column), whether another seat may be opened
+ * (half a plan question), how the stacks are meant to be read (a config field),
+ * or the resolved participant fields; callers finish all of them when the
+ * snapshot crosses into REST/WebSocket responses.
  */
 export type RuntimeSnapshot = Omit<
   GameSnapshot,
-  'joinCode' | 'name' | 'participants'
+  'joinCode' | 'name' | 'participants' | 'canAddSeat' | 'chipModel'
 > & {
   participants: RawParticipantSnapshot[];
 };
