@@ -23,7 +23,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GAME_SERVER_EVENTS } from '@tokenizer/shared/constants/games.constants';
-import { buildFileUrl, gameConfigSchema } from '@tokenizer/shared/schemas';
+import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
   GameSessionStatus,
   type ClaimSeatData,
@@ -612,7 +612,9 @@ export class GameRoomsService {
         account?.username ??
         config.seating.seats[p.seatIndex]?.displayName ??
         `Seat ${p.seatIndex + 1}`,
-      photoUrl: account?.avatar ? buildFileUrl(account.avatar.uuid) : null,
+      photoUrl: account
+        ? await this.usersService.buildAvatarUrl(account)
+        : null,
     };
   }
 }

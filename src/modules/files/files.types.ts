@@ -1,3 +1,4 @@
+import type { GetSignedUrlConfig } from '@google-cloud/storage';
 import { Job, Queue } from 'bullmq';
 
 export enum FileJob {
@@ -18,3 +19,5 @@ export type FilesQueueJob = {
 }[FileJob];
 
 export type FilesQueue = Queue<FileJobData[FileJob], void, FileJob>;
+
+export type SignedUrlOptions = Omit<GetSignedUrlConfig, 'action'>;

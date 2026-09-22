@@ -15,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { FileStatus, FileUploadMode } from '@tokenizer/shared/types';
 import { createHash } from 'node:crypto';
-import type { Readable } from 'node:stream';
 import sharp from 'sharp';
 // Loads the `Express.Multer` global augmentation shipped by @types/multer.
 import 'multer';
@@ -162,10 +161,19 @@ export class FilesService {
     return file;
   }
 
-  public getContentStream(file: File): Readable {
-    return this.firebaseService
+  public async buildSignedUrl(
+    file: File,
+    options: Partial<Types.SignedUrlOptions> = {},
+  ): Promise<string> {
+    const [url] = await this.firebaseService
       .bucket(file.bucketName)
       .file(file.bucketKey)
-      .createReadStream();
+      .getSignedUrl({
+        expires: Date.now() + Constants.SIGNED_URL_TTL_MS,
+        ...options,
+        action: 'read',
+      });
+
+    return url;
   }
 }

@@ -253,4 +253,13 @@ export class UsersService {
   private static comparePassword(password: string, hash: string): boolean {
     return bcrypt.compareSync(password, hash);
   }
+
+  public async buildAvatarUrl(user: User): Promise<Nullable<string>> {
+    if (!user.avatar) return null;
+
+    const file = await user.avatar.load();
+    if (!file) return null;
+
+    return this.filesService.buildSignedUrl(file);
+  }
 }
