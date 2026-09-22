@@ -21,6 +21,12 @@ export interface UpdateSeatParams {
   displayName?: Nullable<string>;
 }
 
+export interface AddSeatParams {
+  id: string;
+  displayName: string;
+  initialBalance?: number;
+}
+
 /**
  * Initial state of a seat, read from the persisted `GameParticipant` rows and
  * used to (re)build the in-memory aggregate when a room opens.

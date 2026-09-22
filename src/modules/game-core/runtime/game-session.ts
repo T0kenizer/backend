@@ -1,4 +1,5 @@
 import type {
+  AddSeatParams,
   ClaimParams,
   SeatInit,
   UpdateSeatParams,
@@ -160,6 +161,37 @@ export class GameSession {
         'There is still a free seat — a new player should take that one',
       );
     }
+  }
+
+  /**
+   * Opens a further seat at a full table.
+   *
+   * The new chair lands after the last one and starts unclaimed, exactly like a
+   * declared seat that nobody has taken: `WAITING`, no controller, and the
+   * host's to play until someone claims it. It is dealt in from the next round,
+   * never the current one — see {@link canAddSeat}.
+   */
+  addSeat(params: AddSeatParams): Participant {
+    this.assertCanAddSeat();
+
+    const seatIndex =
+      this.seats.reduce(
+        (highest, seat) => Math.max(highest, seat.seatIndex),
+        -1,
+      ) + 1;
+
+    const seat = new Participant({
+      id: params.id,
+      seatIndex,
+      role: ParticipantRole.Player,
+      displayNameOverride: params.displayName,
+      balance:
+        params.initialBalance ?? this.config.seating.defaultInitialBalance,
+      controller: null,
+    });
+
+    this.participants.set(seat.id, seat);
+    return seat;
   }
 
   /** Renames the seat the caller holds. */

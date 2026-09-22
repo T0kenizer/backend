@@ -24,6 +24,7 @@ import {
   GAME_SERVER_EVENTS,
 } from '@tokenizer/shared/constants/games.constants';
 import {
+  addSeatDataSchema,
   attachSocketDataSchema,
   resolveRoundDataSchema,
   updateSeatDataSchema,
@@ -154,6 +155,24 @@ export class GameRuntimeGateway
         GAME_SERVER_EVENTS.PARTICIPANT_UPDATED,
         snapshot,
       );
+      return snapshot;
+    });
+  }
+
+  /**
+   * Host only: opens a further seat once every existing one is taken.
+   *
+   * Broadcast as a join rather than an update: to everyone in the room a new
+   * chair appearing is the same kind of event as somebody sitting down, and the
+   * clients already redraw the table on it.
+   */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.ADD_SEAT)
+  addSeat(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.guard(client, async () => {
+      const data = parsePayload(addSeatDataSchema, payload ?? {});
+      const { gameUuid, participantId } = this.boundState(client);
+      const snapshot = await this.rooms.addSeat(gameUuid, participantId, data);
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.PARTICIPANT_JOINED, snapshot);
       return snapshot;
     });
   }

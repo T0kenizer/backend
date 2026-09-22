@@ -1,4 +1,5 @@
 import type {
+  AddSeatParams,
   ClaimParams,
   SeatInit,
   UpdateSeatParams,
@@ -76,6 +77,20 @@ export class GameRuntimeService {
     const session = this.getSessionOrThrow(gameId);
     const seat = session.claimSeat(params);
     this.logger.log(`Seat ${seat.seatIndex} of ${gameId} claimed`);
+    return { snapshot: this.snapshot(gameId), participantId: seat.id };
+  }
+
+  /**
+   * Opens a further seat at a full table. The row must already exist — the
+   * runtime and the database share seat ids.
+   */
+  addSeat(
+    gameId: string,
+    params: AddSeatParams,
+  ): { snapshot: RuntimeSnapshot; participantId: string } {
+    const session = this.getSessionOrThrow(gameId);
+    const seat = session.addSeat(params);
+    this.logger.log(`Seat ${seat.seatIndex} added to ${gameId}`);
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 

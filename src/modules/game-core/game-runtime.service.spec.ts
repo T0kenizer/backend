@@ -369,4 +369,97 @@ describe('GameRuntimeService', () => {
     expect(bob?.seatIndex).toBe(1);
     expect(bob?.role).toBe(ParticipantRole.Player);
   });
+
+  describe('addSeat', () => {
+    const NEW_SEAT_ID = '33333333-3333-4333-8333-333333333333';
+
+    /** Fills every declared seat, which is the precondition for a new one. */
+    function fillTable(gameId = GAME_ID) {
+      ['bob', 'carol', 'dave'].forEach((holderId) =>
+        service.claimSeat(gameId, { holderId }),
+      );
+    }
+
+    it('opens a seat at the end once every chair is taken', () => {
+      fillTable();
+      expect(service.canAddSeat(GAME_ID)).toBe(true);
+
+      service.addSeat(GAME_ID, { id: NEW_SEAT_ID, displayName: 'Seat 5' });
+
+      const seats = service.snapshot(GAME_ID).participants;
+      expect(seats).toHaveLength(5);
+      expect(seats[4]).toMatchObject({
+        id: NEW_SEAT_ID,
+        seatIndex: 4,
+        role: ParticipantRole.Player,
+        displayNameOverride: 'Seat 5',
+        // Unclaimed, exactly like a declared seat nobody took — which is what
+        // makes it the host's to play until someone claims it.
+        controller: null,
+        status: ParticipantStatus.Waiting,
+      });
+    });
+
+    it('starts the new seat on the session default balance', () => {
+      fillTable();
+      service.addSeat(GAME_ID, { id: NEW_SEAT_ID, displayName: 'Seat 5' });
+
+      expect(service.snapshot(GAME_ID).participants[4].balance).toBe(1000);
+    });
+
+    it('honours an explicit starting stack', () => {
+      fillTable();
+      service.addSeat(GAME_ID, {
+        id: NEW_SEAT_ID,
+        displayName: 'Seat 5',
+        initialBalance: 250,
+      });
+
+      expect(service.snapshot(GAME_ID).participants[4].balance).toBe(250);
+    });
+
+    it('refuses while a chair is still free', () => {
+      // Only the host seat is claimed here, so three chairs are going spare:
+      // a new player should take one of those rather than mint a tenth.
+      expect(service.canAddSeat(GAME_ID)).toBe(false);
+      expect(() =>
+        service.addSeat(GAME_ID, { id: NEW_SEAT_ID, displayName: 'Seat 5' }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('refuses mid-round, when the rotation is already under way', () => {
+      fillTable();
+      service.startRound(GAME_ID);
+
+      expect(service.canAddSeat(GAME_ID)).toBe(false);
+      expect(() =>
+        service.addSeat(GAME_ID, { id: NEW_SEAT_ID, displayName: 'Seat 5' }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('refuses when the table was set up with a fixed size', () => {
+      const FIXED_GAME = '44444444-4444-4444-8444-444444444444';
+      const config = defaultGameConfig();
+      config.seating.allowExtraSeats = false;
+
+      service.registerSession(FIXED_GAME, config, HOST_UUID, buildSeats(2));
+      service.claimSeat(FIXED_GAME, { holderId: HOST_UUID, seatIndex: 0 });
+      service.claimSeat(FIXED_GAME, { holderId: 'bob' });
+
+      expect(service.canAddSeat(FIXED_GAME)).toBe(false);
+      expect(() =>
+        service.addSeat(FIXED_GAME, { id: NEW_SEAT_ID, displayName: 'Seat 3' }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('lets the added seat be claimed like any other', () => {
+      fillTable();
+      service.addSeat(GAME_ID, { id: NEW_SEAT_ID, displayName: 'Seat 5' });
+
+      service.claimSeat(GAME_ID, { holderId: 'erin' });
+
+      expect(seatOf('erin')).toBe(NEW_SEAT_ID);
+      expect(service.canAddSeat(GAME_ID)).toBe(true);
+    });
+  });
 });

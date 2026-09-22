@@ -35,6 +35,7 @@ import {
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
   GameSessionStatus,
+  type AddSeatData,
   type ClaimSeatData,
   type GameConfig,
   type GameSnapshot,
@@ -313,6 +314,51 @@ export class GameRoomsService {
       .getItems()
       .find((p) => p.uuid === participantId);
     if (row) await this.gameSessionsService.updateSeat(row, data.displayName);
+
+    await this.noteActivity(session);
+    return this.finalize(this.runtime.snapshot(gameUuid), session);
+  }
+
+  /**
+   * Host-only: opens a further seat at a full table.
+   *
+   * The order matters. The seating rules are checked first, against the
+   * runtime, so a refusal costs nothing; then the plan cap, which is the one
+   * condition the runtime cannot judge because it has never heard of the owner;
+   * and only then is a row written and the aggregate grown. Creating the row
+   * first would leave an orphan seat behind every rejected call.
+   */
+  @CreateRequestContext()
+  async addSeat(
+    gameUuid: string,
+    participantId: string,
+    data: AddSeatData,
+  ): Promise<GameSnapshot> {
+    await this.ensureRoomOpen(gameUuid);
+    this.assertHost(gameUuid, participantId);
+    this.runtime.assertCanAddSeat(gameUuid);
+
+    const session = await this.loadPlayableSession(gameUuid);
+    const seatCount = session.participants.getItems().length;
+    const allowed = maxSeatsFor(session.owner.plan);
+    if (seatCount >= allowed) {
+      throw new ForbiddenException(`Your plan allows at most ${allowed} seats`);
+    }
+
+    const config = gameConfigSchema.parse(session.config);
+    const seatIndex = seatCount;
+    const row = await this.gameSessionsService.addParticipant(
+      session,
+      seatIndex,
+      data.displayName ?? `Seat ${seatIndex + 1}`,
+      data.initialBalance ?? config.seating.defaultInitialBalance,
+    );
+
+    this.runtime.addSeat(gameUuid, {
+      id: row.uuid,
+      displayName: row.displayName ?? `Seat ${seatIndex + 1}`,
+      initialBalance: row.initialBalance,
+    });
 
     await this.noteActivity(session);
     return this.finalize(this.runtime.snapshot(gameUuid), session);

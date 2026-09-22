@@ -69,6 +69,37 @@ export class GameSessionsService {
     return { session, participants };
   }
 
+  /**
+   * Persists one further seat at an existing session.
+   *
+   * Unlike the rows {@link create} makes, this one carries its `displayName`:
+   * the seat is not described by `config.seating.seats`, which is frozen at
+   * creation, so there is no per-seat name for the snapshot to fall back to.
+   */
+  public async addParticipant(
+    session: GameSession,
+    seatIndex: number,
+    displayName: string,
+    initialBalance: number,
+  ): Promise<GameParticipant> {
+    const em = this.gameSessionsRepository.getEntityManager();
+
+    const participant = new GameParticipant();
+    participant.session = session;
+    participant.seatIndex = seatIndex;
+    participant.role = ParticipantRole.Player;
+    participant.displayName = displayName;
+    participant.initialBalance = initialBalance;
+    participant.balance = initialBalance;
+
+    em.persist(participant);
+    await em.flush();
+
+    this.logger.log(`Added seat ${seatIndex} to game session ${session.uuid}`);
+
+    return participant;
+  }
+
   public async getGameSessionByUuid(uuid: string): Promise<GameSession> {
     // WebSocket callers bypass ParseUUIDPipe, so validate here before the
     // value reaches the Postgres uuid cast.
