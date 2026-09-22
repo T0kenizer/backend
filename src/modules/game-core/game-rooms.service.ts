@@ -6,7 +6,10 @@ import * as Constants from '@modules/game-core/game-core.constants';
 import type { SeatInit } from '@modules/game-core/game-core.types';
 import { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
 import { GamePresenceService } from '@modules/game-core/game-presence.service';
-import { defaultGameConfig } from '@modules/game-core/game-runtime.presets';
+import {
+  GAME_TEMPLATES,
+  defaultGameConfig,
+} from '@modules/game-core/game-runtime.presets';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import type {
   RawParticipantSnapshot,
@@ -29,6 +32,7 @@ import {
   type ClaimSeatData,
   type GameConfig,
   type GameSnapshot,
+  type GameTemplate,
   type ParticipantSnapshot,
   type PublicRoomView,
   type RoundResolution,
@@ -122,6 +126,11 @@ export class GameRoomsService {
       seatIndex: 0,
     });
     return this.seatPlayer(session, participantId, owner.uuid);
+  }
+
+  /** The templates a host may open a game from instead of building one. */
+  listTemplates(): readonly GameTemplate[] {
+    return GAME_TEMPLATES;
   }
 
   /**

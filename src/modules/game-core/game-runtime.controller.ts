@@ -56,6 +56,16 @@ export class GameRuntimeController {
   }
 
   /**
+   * The templates a host may open a game from. Public — browsing them takes no
+   * more trust than seeing a pricing page — so it works before sign-in too.
+   */
+  @Get('templates')
+  @ZodSerializerDto(DTOs.ListGameTemplatesResponse)
+  public listTemplates() {
+    return this.rooms.listTemplates();
+  }
+
+  /**
    * Resolves a dictated code to the session uuid behind it — the one and only
    * thing a code is for. Everything afterwards is keyed by that uuid.
    *

@@ -6,6 +6,7 @@ import {
   createGameSessionResponseSchema,
   joinByCodeDataSchema,
   joinByCodeResponseSchema,
+  listGameTemplatesResponseSchema,
   resolveRoundDataSchema,
   resolveRoundResponseSchema,
   retrieveGameSessionResponseSchema,
@@ -25,6 +26,12 @@ export class CreateGameSessionData extends createZodDto(
 ) {}
 export class CreateGameSessionResponse extends createZodDto(
   createGameSessionResponseSchema,
+) {}
+
+/** List Game Templates DTOs */
+
+export class ListGameTemplatesResponse extends createZodDto(
+  listGameTemplatesResponseSchema,
 ) {}
 
 /** Join By Code DTOs */
