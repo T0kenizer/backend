@@ -52,7 +52,13 @@ export class GameRuntimeController {
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.CreateGameSessionResponse)
   public create(@Body() data: DTOs.CreateGameSessionData, @Req() req: Request) {
-    return this.rooms.createGame(req.user!.uuid, data.config, data.name);
+    return this.rooms.createGame(
+      req.user!.uuid,
+      data.config,
+      data.name,
+      data.templateId,
+      data.seats,
+    );
   }
 
   /**

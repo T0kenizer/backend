@@ -9,6 +9,7 @@ import { GamePresenceService } from '@modules/game-core/game-presence.service';
 import {
   GAME_TEMPLATES,
   defaultGameConfig,
+  getTemplateById,
 } from '@modules/game-core/game-runtime.presets';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import type {
@@ -26,6 +27,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GAME_SERVER_EVENTS } from '@tokenizer/shared/constants/games.constants';
+import {
+  canCustomizeGame,
+  canUseTemplates,
+  maxSeatsFor,
+} from '@tokenizer/shared/constants/plans.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
   GameSessionStatus,
@@ -36,6 +42,7 @@ import {
   type ParticipantSnapshot,
   type PublicRoomView,
   type RoundResolution,
+  type SeatDeclaration,
   type SubmitActionData,
   type UpdateSeatData,
 } from '@tokenizer/shared/types';
@@ -95,6 +102,8 @@ export class GameRoomsService {
     ownerUuid: string,
     config?: GameConfig,
     name?: string,
+    templateId?: string,
+    seats?: SeatDeclaration[],
   ): Promise<JoinResult> {
     if (!z.uuid().safeParse(ownerUuid).success) {
       throw new BadRequestException(
@@ -103,7 +112,46 @@ export class GameRoomsService {
     }
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
-    const gameConfig = config ?? defaultGameConfig();
+
+    // Customizing the rules is a plan feature: a plan that lacks it can only
+    // open a template or the default preset, never submit a config of its own.
+    if (config && !canCustomizeGame(owner.plan)) {
+      throw new ForbiddenException(
+        'Your plan does not allow customizing the game; use a template instead',
+      );
+    }
+
+    let template: Optional<GameTemplate>;
+
+    if (templateId) {
+      if (!canUseTemplates(owner.plan)) {
+        throw new ForbiddenException(
+          'Your plan does not allow using templates',
+        );
+      }
+
+      template = getTemplateById(templateId);
+      if (!template) {
+        throw new NotFoundException(`Unknown template: ${templateId}`);
+      }
+    }
+
+    // Seats are configurable independently of the customize/template plan
+    // split — every plan may declare its own seats, only the seat count is
+    // capped (below), never gated behind canCustomize.
+    const baseConfig = template?.config ?? defaultGameConfig();
+    const gameConfig =
+      config ??
+      (seats
+        ? { ...baseConfig, seating: { ...baseConfig.seating, seats } }
+        : baseConfig);
+
+    if (gameConfig.seating.seats.length > maxSeatsFor(owner.plan)) {
+      throw new ForbiddenException(
+        `Your plan allows at most ${maxSeatsFor(owner.plan)} seats`,
+      );
+    }
+
     const { session, participants } = await this.gameSessionsService.create(
       owner,
       gameConfig,

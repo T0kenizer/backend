@@ -18,7 +18,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { GameSessionStatus, ParticipantRole } from '@tokenizer/shared/types';
+import {
+  GameSessionStatus,
+  ParticipantRole,
+  Plan,
+  type GameConfig,
+} from '@tokenizer/shared/types';
 
 // @CreateRequestContext() insists on a real `MikroORM` instance; neuter it so
 // the service can run against fakes. The DB work itself is faked below anyway.
@@ -149,6 +154,7 @@ describe('GameRoomsService', () => {
         username: 'owner',
         displayName: 'Owner',
         avatar: null,
+        plan: Plan.Free,
       }),
       findUserByUuid: jest.fn().mockResolvedValue(null),
     };
@@ -209,6 +215,121 @@ describe('GameRoomsService', () => {
       await expect(service.createGame('not-a-uuid')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    describe('plan limits', () => {
+      const configWithSeats = (count: number): GameConfig => {
+        const config = defaultGameConfig();
+        return {
+          ...config,
+          seating: {
+            ...config.seating,
+            seats: Array.from({ length: count }, (_, index) => ({
+              displayName: `Seat ${index + 1}`,
+            })),
+          },
+        };
+      };
+
+      it('rejects a free user submitting a custom config', async () => {
+        await expect(
+          service.createGame(OWNER_UUID, defaultGameConfig()),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('lets a free user create a game by omitting config (the preset)', async () => {
+        await expect(service.createGame(OWNER_UUID)).resolves.toBeDefined();
+      });
+
+      it('lets a premium user submit a custom config within their seat cap', async () => {
+        users.getUserByUuid.mockResolvedValueOnce({
+          uuid: OWNER_UUID,
+          username: 'owner',
+          displayName: 'Owner',
+          avatar: null,
+          plan: Plan.Premium,
+        });
+
+        await expect(
+          service.createGame(OWNER_UUID, configWithSeats(12)),
+        ).resolves.toBeDefined();
+      });
+
+      it('rejects a premium user exceeding their own, higher seat cap', async () => {
+        users.getUserByUuid.mockResolvedValueOnce({
+          uuid: OWNER_UUID,
+          username: 'owner',
+          displayName: 'Owner',
+          avatar: null,
+          plan: Plan.Premium,
+        });
+
+        await expect(
+          service.createGame(OWNER_UUID, configWithSeats(13)),
+        ).rejects.toThrow(ForbiddenException);
+      });
+    });
+
+    describe('templates', () => {
+      it('lets a free user open a game from a known template', async () => {
+        await expect(
+          service.createGame(OWNER_UUID, undefined, undefined, 'simple-poker'),
+        ).resolves.toBeDefined();
+      });
+
+      it('rejects an unknown template id', async () => {
+        await expect(
+          service.createGame(
+            OWNER_UUID,
+            undefined,
+            undefined,
+            'not-a-template',
+          ),
+        ).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    describe('seats override', () => {
+      const seatsOf = (count: number) =>
+        Array.from({ length: count }, (_, index) => ({
+          displayName: `Seat ${index + 1}`,
+        }));
+
+      it("lets a free user override a template's seat count, within their cap", async () => {
+        await expect(
+          service.createGame(
+            OWNER_UUID,
+            undefined,
+            undefined,
+            'simple-poker',
+            seatsOf(2),
+          ),
+        ).resolves.toBeDefined();
+      });
+
+      it("rejects a free user overriding a template's seats beyond their cap", async () => {
+        await expect(
+          service.createGame(
+            OWNER_UUID,
+            undefined,
+            undefined,
+            'simple-poker',
+            seatsOf(5),
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('overrides the default preset when no template is given either', async () => {
+        await expect(
+          service.createGame(
+            OWNER_UUID,
+            undefined,
+            undefined,
+            undefined,
+            seatsOf(3),
+          ),
+        ).resolves.toBeDefined();
+      });
     });
   });
 
