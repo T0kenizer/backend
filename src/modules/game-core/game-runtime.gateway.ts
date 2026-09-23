@@ -26,18 +26,12 @@ import {
 import {
   addSeatDataSchema,
   attachSocketDataSchema,
-  resolveRoundDataSchema,
+  declareWinnersDataSchema,
+  submitActionDataSchema,
   updateSeatDataSchema,
 } from '@tokenizer/shared/schemas';
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
-
-const actionPayloadSchema = z.object({
-  // Host only: acts on behalf of an unclaimed seat instead of the caller's own.
-  targetParticipantId: z.uuid().optional(),
-  definitionId: z.string().min(1),
-  amount: z.number().int().nonnegative().optional(),
-});
 
 function parsePayload<Schema extends z.ZodType>(
   schema: Schema,
@@ -177,21 +171,37 @@ export class GameRuntimeGateway
     });
   }
 
-  /** Host only. */
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.START_ROUND)
-  startRound(@ConnectedSocket() client: Socket) {
+  /**
+   * Host only: deals the next hand.
+   *
+   * It can settle on the spot — antes and blinds alone can put every remaining
+   * seat all-in — so the deal answers the same shape an action does, and the
+   * table is told about the settlement rather than left showing a hand nobody
+   * can act on.
+   */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.START_HAND)
+  startHand(@ConnectedSocket() client: Socket) {
     return this.guard(client, async () => {
       const { gameUuid, participantId } = this.boundState(client);
-      const snapshot = await this.rooms.startRound(gameUuid, participantId);
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_STARTED, snapshot);
-      return snapshot;
+      const { snapshot, resolution } = await this.rooms.startHand(
+        gameUuid,
+        participantId,
+      );
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_STARTED, snapshot);
+      if (resolution) {
+        this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
+          ...snapshot,
+          resolution,
+        });
+      }
+      return { snapshot, resolution };
     });
   }
 
   @SubscribeMessage(GAME_CLIENT_MESSAGES.ACTION)
   action(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
-      const data = parsePayload(actionPayloadSchema, payload);
+      const data = parsePayload(submitActionDataSchema, payload);
       const { gameUuid, participantId } = this.boundState(client);
       const { snapshot, resolution } = await this.rooms.submitAction(
         gameUuid,
@@ -201,7 +211,7 @@ export class GameRuntimeGateway
 
       this.broadcast(gameUuid, GAME_SERVER_EVENTS.ACTION_APPLIED, snapshot);
       if (resolution) {
-        this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
+        this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
           ...snapshot,
           resolution,
         });
@@ -210,18 +220,21 @@ export class GameRuntimeGateway
     });
   }
 
-  /** Host only. */
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.RESOLVE)
-  resolve(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  /** Host only: settles the showdown from the table's own verdict. */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.DECLARE_WINNERS)
+  declareWinners(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
     return this.guard(client, async () => {
-      const data = parsePayload(resolveRoundDataSchema, payload ?? {});
+      const data = parsePayload(declareWinnersDataSchema, payload ?? {});
       const { gameUuid, participantId } = this.boundState(client);
-      const { snapshot, resolution } = await this.rooms.resolveRound(
+      const { snapshot, resolution } = await this.rooms.declareWinners(
         gameUuid,
         participantId,
-        data.winnerParticipantIds,
+        data.awards,
       );
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
         ...snapshot,
         resolution,
       });

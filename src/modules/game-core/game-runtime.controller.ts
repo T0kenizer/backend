@@ -52,23 +52,18 @@ export class GameRuntimeController {
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.CreateGameSessionResponse)
   public create(@Body() data: DTOs.CreateGameSessionData, @Req() req: Request) {
-    return this.rooms.createGame(
-      req.user!.uuid,
-      data.config,
-      data.name,
-      data.templateId,
-      data.seats,
-    );
+    return this.rooms.createGame(req.user!.uuid, data);
   }
 
   /**
-   * The templates a host may open a game from. Public — browsing them takes no
-   * more trust than seeing a pricing page — so it works before sign-in too.
+   * The games a host may open a table in, with the parameters each one starts
+   * from. Public — browsing them takes no more trust than seeing a pricing page
+   * — so it works before sign-in too.
    */
-  @Get('templates')
-  @ZodSerializerDto(DTOs.ListGameTemplatesResponse)
-  public listTemplates() {
-    return this.rooms.listTemplates();
+  @Get('modes')
+  @ZodSerializerDto(DTOs.ListGameModesResponse)
+  public listModes() {
+    return this.rooms.listModes();
   }
 
   /**
@@ -193,15 +188,16 @@ export class GameRuntimeController {
     return this.rooms.updateSeat(uuid, participantId, data);
   }
 
-  @Post(':uuid/rounds')
+  /** Host only: deals the next hand. */
+  @Post(':uuid/hands')
   @HttpCode(HttpStatus.CREATED)
-  @ZodSerializerDto(DTOs.StartRoundResponse)
-  public startRound(
+  @ZodSerializerDto(DTOs.StartHandResponse)
+  public startHand(
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @RawPlayerToken() token: string,
   ) {
     const { participantId } = this.tokens.verify(token, uuid);
-    return this.rooms.startRound(uuid, participantId);
+    return this.rooms.startHand(uuid, participantId);
   }
 
   @Post(':uuid/actions')
@@ -216,20 +212,21 @@ export class GameRuntimeController {
     return this.rooms.submitAction(uuid, participantId, data);
   }
 
-  @Post(':uuid/rounds/current/resolve')
+  /**
+   * Host only: settles a showdown. The cards are on the physical table and the
+   * app never sees them, so the winner is declared rather than computed — which
+   * is also why this is a separate call and not a flag on an action.
+   */
+  @Post(':uuid/hands/current/showdown')
   @HttpCode(HttpStatus.OK)
-  @ZodSerializerDto(DTOs.ResolveRoundResponse)
-  public resolveRound(
+  @ZodSerializerDto(DTOs.DeclareWinnersResponse)
+  public declareWinners(
     @Param('uuid', ParseUUIDPipe) uuid: string,
-    @Body() data: DTOs.ResolveRoundData,
+    @Body() data: DTOs.DeclareWinnersData,
     @RawPlayerToken() token: string,
   ) {
     const { participantId } = this.tokens.verify(token, uuid);
-    return this.rooms.resolveRound(
-      uuid,
-      participantId,
-      data.winnerParticipantIds,
-    );
+    return this.rooms.declareWinners(uuid, participantId, data.awards);
   }
 
   @Delete(':uuid')

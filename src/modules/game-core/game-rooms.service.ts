@@ -5,12 +5,8 @@ import { GameCodesService } from '@modules/game-core/game-codes.service';
 import * as Constants from '@modules/game-core/game-core.constants';
 import type { SeatInit } from '@modules/game-core/game-core.types';
 import { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
+import { GAME_MODES, defaultConfigFor } from '@modules/game-core/game-modes';
 import { GamePresenceService } from '@modules/game-core/game-presence.service';
-import {
-  GAME_TEMPLATES,
-  defaultGameConfig,
-  getTemplateById,
-} from '@modules/game-core/game-runtime.presets';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import type {
   RawParticipantSnapshot,
@@ -28,8 +24,8 @@ import {
 } from '@nestjs/common';
 import { GAME_SERVER_EVENTS } from '@tokenizer/shared/constants/games.constants';
 import {
-  canCustomizeGame,
-  canUseTemplates,
+  canCustomizeRules,
+  canUseMode,
   maxSeatsFor,
 } from '@tokenizer/shared/constants/plans.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
@@ -37,13 +33,14 @@ import {
   GameSessionStatus,
   type AddSeatData,
   type ClaimSeatData,
+  type CreateGameSessionData,
   type GameConfig,
+  type GameModeDescriptor,
   type GameSnapshot,
-  type GameTemplate,
+  type HandResolution,
   type ParticipantSnapshot,
+  type PotAward,
   type PublicRoomView,
-  type RoundResolution,
-  type SeatDeclaration,
   type SubmitActionData,
   type UpdateSeatData,
 } from '@tokenizer/shared/types';
@@ -101,10 +98,7 @@ export class GameRoomsService {
   @CreateRequestContext()
   async createGame(
     ownerUuid: string,
-    config?: GameConfig,
-    name?: string,
-    templateId?: string,
-    seats?: SeatDeclaration[],
+    data: CreateGameSessionData,
   ): Promise<JoinResult> {
     if (!z.uuid().safeParse(ownerUuid).success) {
       throw new BadRequestException(
@@ -114,38 +108,32 @@ export class GameRoomsService {
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
 
-    // Customizing the rules is a plan feature: a plan that lacks it can only
-    // open a template or the default preset, never submit a config of its own.
-    if (config && !canCustomizeGame(owner.plan)) {
+    // The mode comes first, and it is a plan feature in its own right: a plan
+    // that does not include a game cannot open a table in it, however the rest
+    // of the request is shaped.
+    if (!canUseMode(owner.plan, data.mode)) {
       throw new ForbiddenException(
-        'Your plan does not allow customizing the game; use a template instead',
+        `Your plan does not include ${data.mode.toLowerCase()}`,
       );
     }
 
-    let template: Optional<GameTemplate>;
-
-    if (templateId) {
-      if (!canUseTemplates(owner.plan)) {
-        throw new ForbiddenException(
-          'Your plan does not allow using templates',
-        );
-      }
-
-      template = getTemplateById(templateId);
-      if (!template) {
-        throw new NotFoundException(`Unknown template: ${templateId}`);
-      }
+    // Changing the mode's parameters is the separate feature. Without it a
+    // host still picks their game — they just play it at the stakes it comes
+    // with.
+    if (data.config && !canCustomizeRules(owner.plan)) {
+      throw new ForbiddenException(
+        'Your plan does not allow changing the rules; open the table as it comes',
+      );
     }
 
-    // Seats are configurable independently of the customize/template plan
-    // split — every plan may declare its own seats, only the seat count is
-    // capped (below), never gated behind canCustomize.
-    const baseConfig = template?.config ?? defaultGameConfig();
-    const gameConfig =
-      config ??
-      (seats
-        ? { ...baseConfig, seating: { ...baseConfig.seating, seats } }
-        : baseConfig);
+    // Seats are configurable whatever the plan — every host may say who is at
+    // their table — and only the seat count is capped, below.
+    const defaults = defaultConfigFor(data.mode);
+    const gameConfig: GameConfig =
+      data.config ??
+      (data.seats
+        ? { ...defaults, seating: { ...defaults.seating, seats: data.seats } }
+        : defaults);
 
     if (gameConfig.seating.seats.length > maxSeatsFor(owner.plan)) {
       throw new ForbiddenException(
@@ -156,7 +144,7 @@ export class GameRoomsService {
     const { session, participants } = await this.gameSessionsService.create(
       owner,
       gameConfig,
-      name,
+      data.name,
     );
 
     this.runtime.registerSession(
@@ -177,9 +165,9 @@ export class GameRoomsService {
     return this.seatPlayer(session, participantId, owner.uuid);
   }
 
-  /** The templates a host may open a game from instead of building one. */
-  listTemplates(): readonly GameTemplate[] {
-    return GAME_TEMPLATES;
+  /** The games a host may open a table in, and what each one opens with. */
+  listModes(): readonly GameModeDescriptor[] {
+    return GAME_MODES;
   }
 
   /**
@@ -207,6 +195,7 @@ export class GameRoomsService {
 
     return {
       name: session.name,
+      mode: gameConfigSchema.parse(session.config).mode,
       status: session.status,
       playerCount: seats.filter((p) => p.claimedBy !== null).length,
       seatCount: seats.length,
@@ -364,33 +353,43 @@ export class GameRoomsService {
     return this.finalize(this.runtime.snapshot(gameUuid), session);
   }
 
-  /** Host-only: starts a round. */
+  /**
+   * Host-only: deals the next hand.
+   *
+   * The deal can settle the hand outright when the antes and blinds leave
+   * everybody all-in, so it answers the same shape an action does — and the
+   * balances are persisted right there, because chips have moved.
+   */
   @CreateRequestContext()
-  async startRound(
+  async startHand(
     gameUuid: string,
     participantId: string,
-  ): Promise<GameSnapshot> {
+  ): Promise<{ snapshot: GameSnapshot; resolution?: HandResolution }> {
     await this.ensureRoomOpen(gameUuid);
     this.assertHost(gameUuid, participantId);
 
-    const snapshot = this.runtime.startRound(gameUuid);
+    const result = this.runtime.startHand(gameUuid);
     const session = await this.loadPlayableSession(gameUuid);
     await this.gameSessionsService.setStatus(
       session,
       GameSessionStatus.Running,
     );
+    if (result.resolution) await this.persistBalances(gameUuid, session);
     await this.codes.touch(gameUuid);
 
-    return this.finalize(snapshot, session);
+    return {
+      ...result,
+      snapshot: await this.finalize(result.snapshot, session),
+    };
   }
 
-  /** Applies an action; when it settles the round, balances are persisted. */
+  /** Plays a move; when it settles the hand, balances are persisted. */
   @CreateRequestContext()
   async submitAction(
     gameUuid: string,
     participantId: string,
     data: SubmitActionData,
-  ): Promise<{ snapshot: GameSnapshot; resolution?: RoundResolution }> {
+  ): Promise<{ snapshot: GameSnapshot; resolution?: HandResolution }> {
     await this.ensureRoomOpen(gameUuid);
     const result = this.runtime.submitAction(gameUuid, participantId, data);
 
@@ -407,17 +406,17 @@ export class GameRoomsService {
     };
   }
 
-  /** Host-only: manual round resolution; balances are persisted. */
+  /** Host-only: settles the showdown; balances are persisted. */
   @CreateRequestContext()
-  async resolveRound(
+  async declareWinners(
     gameUuid: string,
     participantId: string,
-    winnerParticipantIds?: string[],
-  ): Promise<{ snapshot: GameSnapshot; resolution: RoundResolution }> {
+    awards: PotAward[],
+  ): Promise<{ snapshot: GameSnapshot; resolution: HandResolution }> {
     await this.ensureRoomOpen(gameUuid);
     this.assertHost(gameUuid, participantId);
 
-    const result = this.runtime.resolveRound(gameUuid, winnerParticipantIds);
+    const result = this.runtime.declareWinners(gameUuid, awards);
     const session = await this.loadPlayableSession(gameUuid);
     await this.persistBalances(gameUuid, session);
 
@@ -687,9 +686,6 @@ export class GameRoomsService {
       status: session.status,
       joinCode: await this.codes.codeFor(session.uuid),
       participants,
-      // How every stack at this table should be drawn. The rest of the
-      // economy stays server-side; this one field changes what a player sees.
-      chipModel: config.economy.chipModel,
       // Answered here rather than in the runtime because the plan cap is the
       // half of the question the aggregate cannot see. A client showing an
       // "add a seat" button needs both halves, and should not have to learn

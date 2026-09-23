@@ -4,14 +4,14 @@ import {
   closeGameSessionResponseSchema,
   createGameSessionDataSchema,
   createGameSessionResponseSchema,
+  declareWinnersDataSchema,
+  declareWinnersResponseSchema,
   joinByCodeDataSchema,
   joinByCodeResponseSchema,
-  listGameTemplatesResponseSchema,
-  resolveRoundDataSchema,
-  resolveRoundResponseSchema,
+  listGameModesResponseSchema,
   retrieveGameSessionResponseSchema,
   retrieveRoomByCodeResponseSchema,
-  startRoundResponseSchema,
+  startHandResponseSchema,
   submitActionDataSchema,
   submitActionResponseSchema,
   updateSeatDataSchema,
@@ -28,10 +28,10 @@ export class CreateGameSessionResponse extends createZodDto(
   createGameSessionResponseSchema,
 ) {}
 
-/** List Game Templates DTOs */
+/** List Game Modes DTOs */
 
-export class ListGameTemplatesResponse extends createZodDto(
-  listGameTemplatesResponseSchema,
+export class ListGameModesResponse extends createZodDto(
+  listGameModesResponseSchema,
 ) {}
 
 /** Join By Code DTOs */
@@ -65,11 +65,9 @@ export class UpdateSeatResponse extends createZodDto(
   updateSeatResponseSchema,
 ) {}
 
-/** Start Round DTOs */
+/** Start Hand DTOs */
 
-export class StartRoundResponse extends createZodDto(
-  startRoundResponseSchema,
-) {}
+export class StartHandResponse extends createZodDto(startHandResponseSchema) {}
 
 /** Submit Action DTOs */
 
@@ -78,11 +76,13 @@ export class SubmitActionResponse extends createZodDto(
   submitActionResponseSchema,
 ) {}
 
-/** Resolve Round DTOs */
+/** Declare Winners DTOs */
 
-export class ResolveRoundData extends createZodDto(resolveRoundDataSchema) {}
-export class ResolveRoundResponse extends createZodDto(
-  resolveRoundResponseSchema,
+export class DeclareWinnersData extends createZodDto(
+  declareWinnersDataSchema,
+) {}
+export class DeclareWinnersResponse extends createZodDto(
+  declareWinnersResponseSchema,
 ) {}
 
 /** Close Game Session DTOs */

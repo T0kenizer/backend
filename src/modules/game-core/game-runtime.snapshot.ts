@@ -1,12 +1,15 @@
+import type { Hand } from '@modules/game-core/poker/hand';
+import type { HandEvent } from '@modules/game-core/poker/hand-event';
+import type { PotLayer } from '@modules/game-core/poker/pots';
 import type { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
-import type { Pot } from '@modules/game-core/runtime/pot';
-import type { Round } from '@modules/game-core/runtime/round';
 import type {
   GameSnapshot,
+  HandEventSnapshot,
+  HandSnapshot,
   ParticipantSnapshot,
   PotSnapshot,
-  RoundSnapshot,
+  TableStakes,
 } from '@tokenizer/shared/types';
 
 /**
@@ -46,45 +49,56 @@ function serializeParticipant(p: Participant): RawParticipantSnapshot {
   };
 }
 
-function serializePot(pot: Pot): PotSnapshot {
+function serializePot(pot: PotLayer): PotSnapshot {
   return {
     id: pot.id,
     amount: pot.amount,
     eligibleParticipants: [...pot.eligibleParticipants],
+    isSidePot: pot.isSidePot,
   };
 }
 
-function serializeRound(round: Round): RoundSnapshot {
+function serializeEvent(event: HandEvent): HandEventSnapshot {
   return {
-    id: round.id,
-    status: round.status,
-    pots: round.pots.map(serializePot),
-    turn: {
-      activeParticipant: round.turnState.activeParticipant,
-      interruptionOpen: round.turnState.interruptionOpen,
-      pendingClaims: round.turnState.pendingClaims.length,
-      legalActions: round.turnState.computeLegalActions(),
+    id: event.id,
+    participantId: event.participantId,
+    type: event.type,
+    amount: event.amount,
+    street: event.street,
+    timestamp: event.timestamp.toISOString(),
+  };
+}
+
+function serializeHand(hand: Hand): HandSnapshot {
+  return {
+    id: hand.id,
+    handNumber: hand.handNumber,
+    status: hand.status,
+    street: hand.street,
+    dealerParticipant: hand.order[hand.dealerIndex].id,
+    smallBlindParticipant: hand.smallBlindId,
+    bigBlindParticipant: hand.bigBlindId,
+    pots: hand.pots().map(serializePot),
+    betting: {
+      activeParticipant: hand.betting.actor?.id ?? null,
+      currentBet: hand.betting.currentBet,
+      minRaiseTo: hand.betting.minRaiseTo,
+      committed: Object.fromEntries(hand.betting.committed),
+      legalActions: hand.legalActions(),
     },
-    actionLog: round.actionLog.map((a) => ({
-      id: a.id,
-      participantId: a.participantId,
-      definitionId: a.definitionId,
-      amount: a.amount,
-      timestamp: a.timestamp.toISOString(),
-    })),
+    events: hand.events.map(serializeEvent),
   };
 }
 
 /**
  * The runtime aggregate knows nothing of the join code (an ephemeral Redis
  * concern), the session name (a DB column), whether another seat may be opened
- * (half a plan question), how the stacks are meant to be read (a config field),
- * or the resolved participant fields; callers finish all of them when the
- * snapshot crosses into REST/WebSocket responses.
+ * (half a plan question), or the resolved participant fields; callers finish
+ * all of them when the snapshot crosses into REST/WebSocket responses.
  */
 export type RuntimeSnapshot = Omit<
   GameSnapshot,
-  'joinCode' | 'name' | 'participants' | 'canAddSeat' | 'chipModel'
+  'joinCode' | 'name' | 'participants' | 'canAddSeat'
 > & {
   participants: RawParticipantSnapshot[];
 };
@@ -93,12 +107,22 @@ export function serializeSession(
   id: string,
   session: GameSession,
 ): RuntimeSnapshot {
+  const { rules } = session.config;
+  const stakes: TableStakes = {
+    blinds: rules.blinds,
+    ante: rules.ante,
+    bettingStructure: rules.bettingStructure,
+  };
+
   return {
     id,
+    mode: session.config.mode,
     status: session.status,
+    stakes,
+    chipModel: rules.chipModel,
     participants: session.seats.map(serializeParticipant),
-    currentRound: session.currentRound
-      ? serializeRound(session.currentRound)
+    currentHand: session.currentHand
+      ? serializeHand(session.currentHand)
       : null,
   };
 }
