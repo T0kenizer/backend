@@ -20,27 +20,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
-/**
- * GameCore runtime module.
- *
- * The split of responsibilities is the point of this module:
- *
- * - `GameSessionsService` owns the persisted rows — the source of truth for
- *   status, seats, balances and activity.
- * - `GameRuntimeService` holds the in-memory aggregate, which is a cache of those
- *   rows, rebuilt from them whenever a room opens.
- * - `GameCodesService` owns the ephemeral 6-digit code in Redis, and Redis holds
- *   nothing else about a game.
- * - `GamePresenceService` answers who is connected, straight off the Socket.IO
- *   adapter.
- * - `GameLifecycleService` / `GameLifecycleConsumer` carry every deferred
- *   decision on a queue, so a restart cannot lose them.
- * - `GameTokensService` issues the per-player token that authorises in-game
- *   actions and reconnections.
- * - `GameQrService` renders the join QR on demand. It stores nothing: the symbol
- *   is a pure function of the session uuid and the public origin.
- * - `GameRoomsService` orchestrates all of the above.
- */
 @Module({
   imports: [
     MikroOrmModule.forFeature([GameSession, GameParticipant]),

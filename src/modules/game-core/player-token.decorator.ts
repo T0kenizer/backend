@@ -6,13 +6,6 @@ import {
 import { PLAYER_TOKEN_HEADER } from '@tokenizer/shared/constants/games.constants';
 import type { Request } from 'express';
 
-/**
- * Pulls the raw player token off the request.
- *
- * It is deliberately not the session cookie: a player may be anonymous, may
- * hold seats in two games at once, and may have several tabs open. The token is
- * scoped to one seat of one session, which the cookie could never be.
- */
 export const RawPlayerToken = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string => {
     const request = ctx.switchToHttp().getRequest<Request>();

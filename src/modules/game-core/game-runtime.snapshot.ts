@@ -20,23 +20,6 @@ import {
   type TableStakes,
 } from '@tokenizer/shared/types';
 
-/**
- * Serializers producing the plain read-models of the runtime aggregate (shapes
- * defined in `@tokenizer/shared`). These are the only shapes that leave the
- * module (REST responses, WebSocket payloads); the rich domain objects never
- * cross the boundary.
- */
-
-/**
- * Raw runtime participant fields, before `displayName`/`photoUrl`/`connected`
- * are resolved — the first two need DB access the runtime doesn't have, the
- * third is a presence read. `GameRoomsService` finishes all three before this
- * crosses the wire.
- *
- * `controller` is carried here for that resolution step and dropped on the way
- * out: a snapshot reaches every socket in the room, so the identity holding a
- * seat must not survive into it.
- */
 export interface RawParticipantSnapshot extends Omit<
   ParticipantSnapshot,
   'displayName' | 'photoUrl' | 'connected' | 'claimed'
@@ -98,13 +81,6 @@ function serializeHand(hand: Hand): HandSnapshot {
   };
 }
 
-/**
- * The free runtime pools everything into one pot — `PotMode.Single` is the only
- * mode it settles — so nothing it produces is ever a side pot. The flag is
- * carried anyway: it belongs to the pot shape both modes share, and answering
- * it here is cheaper than asking every client to know which mode has side
- * pots.
- */
 function serializeFreePot(pot: Pot): PotSnapshot {
   return {
     id: pot.id,
@@ -139,21 +115,10 @@ function serializeRound(round: Round): RoundSnapshot {
   };
 }
 
-/**
- * `Omit` over a union collapses it into one member, which would quietly erase
- * the very discriminator the snapshot is built around. Distributing it keeps
- * one runtime shape per mode.
- */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never;
 
-/**
- * The runtime aggregate knows nothing of the join code (an ephemeral Redis
- * concern), the session name (a DB column), whether another seat may be opened
- * (half a plan question), or the resolved participant fields; callers finish
- * all of them when the snapshot crosses into REST/WebSocket responses.
- */
 export type RuntimeSnapshot = DistributiveOmit<
   GameSnapshot,
   'joinCode' | 'name' | 'participants' | 'canAddSeat'

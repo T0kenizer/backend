@@ -27,18 +27,6 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
 
-/**
- * REST router for the game runtime.
- *
- * This is where identity is established. Creating a game and taking a seat go
- * through here because both need the session cookie, and both answer with the
- * player token that the socket then replays — live gameplay runs over the
- * socket, but it never mints identity of its own.
- *
- * The two code-facing routes are rate-limited well below the global default. A
- * 6-digit code is a 10^6 space: left open, either route is an enumeration
- * oracle, and the cheaper one would map out every live room in minutes.
- */
 @Controller('games')
 export class GameRuntimeController {
   constructor(
@@ -55,25 +43,12 @@ export class GameRuntimeController {
     return this.rooms.createGame(req.user!.uuid, data);
   }
 
-  /**
-   * The games a host may open a table in, with the parameters each one starts
-   * from. Public — browsing them takes no more trust than seeing a pricing page
-   * — so it works before sign-in too.
-   */
   @Get('modes')
   @ZodSerializerDto(DTOs.ListGameModesResponse)
   public listModes() {
     return this.rooms.listModes();
   }
 
-  /**
-   * Resolves a dictated code to the session uuid behind it — the one and only
-   * thing a code is for. Everything afterwards is keyed by that uuid.
-   *
-   * A code that never existed and one that has expired get the same 404, with
-   * the same body. Telling them apart would confirm which codes were ever
-   * issued, which is exactly what an enumerator is after.
-   */
   @Post('join-by-code')
   @Throttle({
     default: {
@@ -90,11 +65,6 @@ export class GameRuntimeController {
     return { gameUuid };
   }
 
-  /**
-   * The public view behind a code: what the game is called, whether it is still
-   * open, how full it is. Never a player's data, and never the uuid — seeing a
-   * room and being let into it are two different privileges.
-   */
   @Get('room-by-code/:code')
   @Throttle({
     default: {
@@ -110,25 +80,12 @@ export class GameRuntimeController {
     return this.rooms.publicRoomView(gameUuid);
   }
 
-  /** Fetching a game (re)opens its room from the persisted session. */
   @Get(':uuid')
   @ZodSerializerDto(DTOs.RetrieveGameSessionResponse)
   public get(@Param('uuid', ParseUUIDPipe) uuid: string) {
     return this.rooms.ensureRoomOpen(uuid);
   }
 
-  /**
-   * The room's join QR, rendered on demand.
-   *
-   * Served like a file's content rather than as JSON: it is an image behind a
-   * uuid, so clients point an `<img>` at it and the browser does the caching.
-   * The symbol encodes the join link, which is keyed by that same uuid and
-   * therefore never changes — hence the immutable year, and the ETag that lets
-   * a revalidation cost 304 bytes instead of a re-render.
-   *
-   * The session is looked up first so an unknown uuid 404s rather than handing
-   * back a perfectly scannable QR for a room that does not exist.
-   */
   @Get(':uuid/qrcode')
   public async getQrCode(
     @Param('uuid', ParseUUIDPipe) uuid: string,
@@ -156,14 +113,6 @@ export class GameRuntimeController {
     });
   }
 
-  /**
-   * Takes a seat and issues the player token.
-   *
-   * Open to guests on purpose — an anonymous player must be able to sit down.
-   * When the caller is signed in, their uuid becomes the seat's holder, so they
-   * find the same seat again on any device; a returning player instead presents
-   * the token they were issued.
-   */
   @Post(':uuid/participants')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.ClaimSeatResponse)
@@ -175,7 +124,6 @@ export class GameRuntimeController {
     return this.rooms.joinGame(uuid, data, req.user?.uuid);
   }
 
-  /** Renames the seat the token belongs to. */
   @Patch(':uuid/participants/current')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.UpdateSeatResponse)
@@ -188,7 +136,6 @@ export class GameRuntimeController {
     return this.rooms.updateSeat(uuid, participantId, data);
   }
 
-  /** Host only: deals the next hand. */
   @Post(':uuid/hands')
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.StartHandResponse)
@@ -200,13 +147,6 @@ export class GameRuntimeController {
     return this.rooms.startHand(uuid, participantId);
   }
 
-  /**
-   * Host only, free mode: opens the next round.
-   *
-   * A separate route from `/hands` rather than one neutral "next deal": the two
-   * are different objects with different lifecycles, and a route that answered
-   * both would leave every client checking the mode to know what it just got.
-   */
   @Post(':uuid/rounds')
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.StartRoundResponse)
@@ -230,11 +170,6 @@ export class GameRuntimeController {
     return this.rooms.submitAction(uuid, participantId, data);
   }
 
-  /**
-   * Host only: settles a showdown. The cards are on the physical table and the
-   * app never sees them, so the winner is declared rather than computed — which
-   * is also why this is a separate call and not a flag on an action.
-   */
   @Post(':uuid/hands/current/showdown')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.DeclareWinnersResponse)
@@ -247,11 +182,6 @@ export class GameRuntimeController {
     return this.rooms.declareWinners(uuid, participantId, data.awards);
   }
 
-  /**
-   * Host only, free mode: settles the open round on the winners the table
-   * names. The free runtime evaluates one automatic end condition and no more,
-   * so this is how nearly every round of it ends.
-   */
   @Post(':uuid/rounds/current/resolve')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.ResolveRoundResponse)

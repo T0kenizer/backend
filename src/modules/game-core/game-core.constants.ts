@@ -14,7 +14,6 @@ export const ROOM_EMPTY_GRACE_MS = 5 * 60 * 1000;
 
 export const CLOSED_ROOM_GRACE_MS = 2 * 60 * 1000;
 
-/** BullMQ queue carrying every deferred lifecycle decision. */
 export const GAME_LIFECYCLE_QUEUE = 'game-lifecycle';
 
 export const WORKER_CONCURRENCY = 5;

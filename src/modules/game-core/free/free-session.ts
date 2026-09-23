@@ -13,16 +13,6 @@ import {
   type RoundResolution,
 } from '@tokenizer/shared/types';
 
-/**
- * A free table: the experimental mode Tokenizer started from.
- *
- * Where {@link PokerSession} knows a game and enforces it, this one knows only
- * chips and a rotation. The host declares the moves, what they cost the pot and
- * how the turn travels; the runtime applies them in order, keeps the arithmetic
- * honest and asks the table who won. That is its whole promise — and its whole
- * limitation, which is why it ships flagged as an experiment: a catalog that
- * describes a game nobody can play is a table the server will happily run.
- */
 export class FreeSession extends GameSession<FreeGameConfig> {
   currentRound?: Round;
   roundsPlayed = 0;
@@ -43,11 +33,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
     return this.roundsPlayed;
   }
 
-  /**
-   * Opens the next round and takes the forced bets the host declared. Unlike a
-   * poker deal there is no button to move: the seats that owe an opening bet
-   * are named outright by the config, and they owe it every round.
-   */
   startRound(): Round {
     this.assertNotFinished();
     if (this.dealInProgress) {
@@ -56,9 +41,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
       );
     }
 
-    // Every declared seat is a real chair at the table — claimed or not, the
-    // host notes moves for whoever hasn't claimed theirs yet. Only eliminated
-    // seats stay out.
     const contenders = this.seats.filter(
       (p) => p.status !== ParticipantStatus.Eliminated,
     );
@@ -70,8 +52,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
 
     this.startPlaying();
 
-    // Last round's folds are last round's; a seat that was still waiting for a
-    // player is dealt in all the same, with the host playing it.
     for (const seat of contenders) {
       if (
         seat.status === ParticipantStatus.Folded ||
@@ -89,11 +69,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
     return round;
   }
 
-  /**
-   * Plays a move from the catalog, then asks the end policy whether that was
-   * the last one. The round decides whether the move is legal and what it
-   * costs; all that is decided here is whether the round is now over.
-   */
   submitAction(
     participant: Participant,
     definitionId: string,
@@ -106,11 +81,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
     return this.evaluateEndConditions();
   }
 
-  /**
-   * The table's own verdict, for the `MANUAL_HOST` policy — and for any round
-   * the automatic conditions never closed. With no winners named, the pot goes
-   * to whoever is still contesting it.
-   */
   resolveRound(winnerParticipantIds: string[] = []): RoundResolution {
     const round = this.currentRound;
     if (!round || round.status !== RoundStatus.InProgress) {
@@ -130,16 +100,6 @@ export class FreeSession extends GameSession<FreeGameConfig> {
     this.status = GameSessionStatus.Finished;
   }
 
-  /**
-   * The one automatic condition the runtime implements: `LAST_PLAYER_STANDING`.
-   * When a single contender is left the pot is uncontested, so the round
-   * settles on its own rather than waiting for a host who has nothing left to
-   * decide.
-   *
-   * Every other condition a host can write into `endPolicy.conditions` is
-   * carried but not evaluated — the round then ends the way every free round
-   * can always end, because the table said so.
-   */
   private evaluateEndConditions(): Optional<RoundResolution> {
     const round = this.currentRound;
     if (!round || round.status !== RoundStatus.InProgress) return undefined;

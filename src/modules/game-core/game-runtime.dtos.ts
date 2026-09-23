@@ -23,17 +23,6 @@ import {
 import { createZodDto } from 'nestjs-zod';
 import type { z } from 'zod';
 
-/**
- * A DTO over a schema whose parsed value is a union.
- *
- * `createZodDto` types its base class as `new () => <the parsed value>`, and a
- * class cannot extend one whose instances are a union — which every response
- * carrying a `GameSnapshot` now is, since the snapshot is discriminated on
- * `mode`. The runtime is unaffected: the serializer only ever calls
- * `schema.parse`, and a discriminated union parses exactly as it should. So the
- * schema is handed over as-is and only its _static_ shape is widened, here, in
- * one place, rather than by weakening the contract itself.
- */
 const unionDto = (schema: z.ZodType) =>
   createZodDto(schema as unknown as z.ZodObject<z.ZodRawShape>);
 

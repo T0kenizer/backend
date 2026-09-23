@@ -16,11 +16,9 @@ export class Round {
   status: RoundStatus;
   readonly pots: Pot[];
   readonly turnState: TurnState;
-  /** Append-only ordered event log */
   readonly actionLog: Action[];
 
   private readonly config: FreeGameConfig;
-  /** Seat-ordered participants of this round (claimed, not eliminated). */
   private readonly participants: Participant[];
 
   constructor(config: FreeGameConfig, orderedParticipants: Participant[]) {
@@ -30,8 +28,6 @@ export class Round {
     this.participants = orderedParticipants;
     this.actionLog = [];
 
-    // A single main pot; side pots (MULTIPLE_SIDEPOTS) will be created
-    // dynamically as all-ins occur — not implemented in v0.
     this.pots = [new Pot(orderedParticipants.map((p) => p.id))];
     this.turnState = new TurnState(
       config.turnPolicy,
@@ -50,7 +46,6 @@ export class Round {
       participant.balance -= amount;
       this.mainPot.addContribution(participant.id, amount);
 
-      // Forced bets are logged with a synthetic definition id
       this.actionLog.push(
         new Action({
           participantId: participant.id,
@@ -86,10 +81,6 @@ export class Round {
       throw new BadRequestException('Participant is not part of this round');
     }
 
-    // While an interruption window is open, the only legal move — for anyone,
-    // active participant included — is to compete for the turn with an
-    // interrupting action. Normal actions would advance the rotation and
-    // silently discard the pending claims.
     if (this.turnState.interruptionOpen) {
       if (!def.grantsInterruption) {
         throw new BadRequestException(
@@ -112,7 +103,6 @@ export class Round {
       );
     }
 
-    // Validate amount against the action definition
     if (def.amountForm !== AmountForm.None && params.amount === undefined) {
       throw new BadRequestException(
         `Action "${def.id}" requires an amount (amountForm: ${def.amountForm})`,
@@ -121,15 +111,12 @@ export class Round {
 
     const action = new Action(params);
 
-    // Move chips if an amount is provided
     if (params.amount !== undefined && params.amount > 0) {
       const capped = Math.min(params.amount, participant.balance);
       participant.balance -= capped;
       this.mainPot.addContribution(participant.id, capped);
     }
 
-    // Actions flagged as folding remove the participant from the round before
-    // the turn advances, so rotation and end conditions skip them.
     if (def.foldsParticipant) {
       participant.status = ParticipantStatus.Folded;
     }
@@ -137,8 +124,6 @@ export class Round {
     this.actionLog.push(action);
 
     if (def.grantsInterruption) {
-      // The window stays open until a claim is resolved or the round settles;
-      // regimes without interruptions rotate normally.
       if (!this.turnState.openInterruptionWindow()) this.turnState.advance();
     } else {
       this.turnState.advance();
@@ -147,20 +132,12 @@ export class Round {
     return action;
   }
 
-  /**
-   * Participants still contesting the round (not folded, not eliminated).
-   * Seat-ordered.
-   */
   contenders(): Participant[] {
     return this.participants.filter(
       (p) => p.status === ParticipantStatus.Active,
     );
   }
 
-  /**
-   * Settles the round: every pot is emptied into its eligible winners' balances
-   * (split equally, remainder to the earliest seat). Idempotent.
-   */
   resolve(winnerIds: string[] = []): void {
     if (this.status === RoundStatus.Resolved) return;
     this.turnState.closeInterruptionWindow();

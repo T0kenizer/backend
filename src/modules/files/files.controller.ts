@@ -44,11 +44,7 @@ export class FilesController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: MAX_FILE_SIZE_BYTES }),
-          // Checks the magic numbers of the actual content, so a renamed
-          // executable is rejected no matter what the client declares.
           new FileTypeValidator({ fileType: ALLOWED_MIME_TYPES_REGEX }),
-          // Also checks the declared mime type, since it is what gets stored
-          // and served back as Content-Type.
           new FileTypeValidator({
             fileType: ALLOWED_MIME_TYPES_REGEX,
             skipMagicNumbersValidation: true,

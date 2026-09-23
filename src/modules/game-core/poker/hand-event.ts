@@ -1,14 +1,12 @@
 import type { HandEventType, Street } from '@tokenizer/shared/types';
 
 export interface HandEventParams {
-  /** Null for something the table did rather than a player. */
   participantId: Nullable<string>;
   type: HandEventType;
   street: Street;
   amount?: number;
 }
 
-/** One immutable line of a hand's history. */
 export class HandEvent {
   readonly id: string;
   readonly participantId: Nullable<string>;

@@ -89,12 +89,17 @@ describe('FilesService', () => {
       expect(metadata.height).toBe(16);
     });
 
-    it('rejects a mime type outside the allowed list', async () => {
+    it('stores a non-image upload untouched', async () => {
       const service = makeService();
+      const content = Buffer.from('%PDF-1.7');
 
-      await expect(
-        service.processContent(makeFile('image/avif'), await makeImage('png')),
-      ).rejects.toThrow('Unsupported mime type');
+      const processed = await service.processContent(
+        makeFile('application/pdf'),
+        content,
+      );
+
+      expect(processed.mimeType).toBe('application/pdf');
+      expect(processed.content).toBe(content);
     });
 
     it('rejects content that cannot be decoded', async () => {
