@@ -234,13 +234,16 @@ describe('GameRoomsService', () => {
         };
       };
 
-      it('rejects a free user submitting rules of their own', async () => {
+      // How configurable a table is belongs to the mode, not to the plan: a
+      // host who may open the game may set it up. What the plan still caps is
+      // how many chairs are round it, which is the assertion below.
+      it('lets a free user set up the mode they are allowed to open', async () => {
         await expect(
           service.createGame(OWNER_UUID, {
             mode: GameMode.Poker,
             config: defaultConfigFor(GameMode.Poker),
           }),
-        ).rejects.toThrow(ForbiddenException);
+        ).resolves.toBeDefined();
       });
 
       it('lets a free user open the mode on its own defaults', async () => {
@@ -305,10 +308,40 @@ describe('GameRoomsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('answers what a host may open a table in', () => {
+      it('refuses the free table to a plan that does not pay for it', async () => {
+        await expect(
+          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('opens the free table for a plan that does', async () => {
+        users.getUserByUuid.mockResolvedValueOnce({
+          uuid: OWNER_UUID,
+          username: 'owner',
+          displayName: 'Owner',
+          avatar: null,
+          plan: Plan.Premium,
+        });
+
+        await expect(
+          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+        ).resolves.toBeDefined();
+      });
+
+      it('answers what a host may open a table in, poker first', () => {
         expect(service.listModes().map((entry) => entry.mode)).toEqual([
           GameMode.Poker,
+          GameMode.Free,
         ]);
+      });
+
+      it('says out loud which of the modes is still an experiment', () => {
+        const experimental = service
+          .listModes()
+          .filter((entry) => entry.experimental)
+          .map((entry) => entry.mode);
+
+        expect(experimental).toEqual([GameMode.Free]);
       });
     });
 

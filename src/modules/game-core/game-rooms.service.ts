@@ -110,21 +110,17 @@ export class GameRoomsService {
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
 
-    // The mode comes first, and it is a plan feature in its own right: a plan
-    // that does not include a game cannot open a table in it, however the rest
-    // of the request is shaped.
+    // The mode is the whole of what a plan buys about the game, and it is
+    // checked first: a plan that does not include a game cannot open a table
+    // in it, however the rest of the request is shaped.
+    //
+    // There is no second check on the config. How configurable a table is
+    // belongs to the mode rather than to the plan — poker takes its stakes and
+    // nothing else, a free table is nothing but its settings — so a host who
+    // may open the mode may set it up.
     if (!canUseMode(owner.plan, data.mode)) {
       throw new ForbiddenException(
         `Your plan does not include ${data.mode.toLowerCase()}`,
-      );
-    }
-
-    // Changing the mode's parameters is the separate feature. Without it a
-    // host still picks their game — they just play it at the stakes it comes
-    // with.
-    if (data.config && !canCustomizeRules(owner.plan)) {
-      throw new ForbiddenException(
-        'Your plan does not allow changing the rules; open the table as it comes',
       );
     }
 
