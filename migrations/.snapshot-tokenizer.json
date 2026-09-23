@@ -1,7 +1,5 @@
 {
-  "namespaces": [
-    "public"
-  ],
+  "namespaces": ["public"],
   "name": "public",
   "tables": [
     {
@@ -107,9 +105,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "account_confirmation_tokens_pkey",
@@ -117,9 +113,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_account_confirmation_tokens_token_hash",
@@ -130,64 +124,40 @@
       "checks": [],
       "foreignKeys": {
         "account_confirmation_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
+          "columnNames": ["user_uuid"],
           "constraintName": "account_confirmation_tokens_user_uuid_foreign",
           "localTableName": "public.account_confirmation_tokens",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -295,9 +265,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "account_deletion_tokens_pkey",
@@ -305,9 +273,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_account_deletion_tokens_token_hash",
@@ -318,64 +284,40 @@
       "checks": [],
       "foreignKeys": {
         "account_deletion_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
+          "columnNames": ["user_uuid"],
           "constraintName": "account_deletion_tokens_user_uuid_foreign",
           "localTableName": "public.account_deletion_tokens",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -507,12 +449,7 @@
           "scale": null,
           "default": "'PENDING'",
           "comment": null,
-          "enumItems": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ],
+          "enumItems": ["PENDING", "PROCESSING", "READY", "FAILED"],
           "mappedType": "unknown",
           "nativeEnumName": "file_status"
         },
@@ -585,9 +522,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "files_pkey",
@@ -595,9 +530,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "checksum_sha256"
-          ],
+          "columnNames": ["checksum_sha256"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_files_checksum",
@@ -605,9 +538,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "created_by_uuid"
-          ],
+          "columnNames": ["created_by_uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_files_created_by_uuid",
@@ -615,9 +546,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "status"
-          ],
+          "columnNames": ["status"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_files_status",
@@ -625,10 +554,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "bucket_name",
-            "bucket_key"
-          ],
+          "columnNames": ["bucket_name", "bucket_key"],
           "composite": true,
           "constraint": true,
           "keyName": "uq_files_bucket_name_key",
@@ -639,15 +565,11 @@
       "checks": [],
       "foreignKeys": {
         "files_created_by_uuid_foreign": {
-          "columnNames": [
-            "created_by_uuid"
-          ],
+          "columnNames": ["created_by_uuid"],
           "constraintName": "files_created_by_uuid_foreign",
           "localTableName": "public.files",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
           "deleteRule": "set null"
         }
@@ -656,47 +578,27 @@
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -796,10 +698,7 @@
           "scale": null,
           "default": null,
           "comment": null,
-          "enumItems": [
-            "HOST",
-            "PLAYER"
-          ],
+          "enumItems": ["HOST", "PLAYER"],
           "mappedType": "unknown",
           "nativeEnumName": "game_participant_role"
         },
@@ -872,9 +771,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "game_participants_pkey",
@@ -882,10 +779,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "session_uuid",
-            "seat_index"
-          ],
+          "columnNames": ["session_uuid", "seat_index"],
           "composite": true,
           "constraint": true,
           "keyName": "uq_game_participants_session_seat",
@@ -896,35 +790,27 @@
       "checks": [
         {
           "name": "chk_game_participants_host_has_no_user",
-          "columnName": "role",
+          "columnName": "user_uuid",
           "definition": "CHECK (((role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)))",
           "expression": "(role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)"
         }
       ],
       "foreignKeys": {
         "game_participants_session_uuid_foreign": {
-          "columnNames": [
-            "session_uuid"
-          ],
+          "columnNames": ["session_uuid"],
           "constraintName": "game_participants_session_uuid_foreign",
           "localTableName": "public.game_participants",
           "referencedTableName": "public.game_sessions",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
           "deleteRule": "no action"
         },
         "game_participants_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
+          "columnNames": ["user_uuid"],
           "constraintName": "game_participants_user_uuid_foreign",
           "localTableName": "public.game_participants",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
           "deleteRule": "set null"
         }
@@ -933,47 +819,27 @@
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -1018,7 +884,7 @@
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": false,
+          "nullable": true,
           "unique": false,
           "length": null,
           "precision": null,
@@ -1073,12 +939,7 @@
           "scale": null,
           "default": "'LOBBY'",
           "comment": null,
-          "enumItems": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ],
+          "enumItems": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"],
           "mappedType": "unknown",
           "nativeEnumName": "game_session_status"
         },
@@ -1119,9 +980,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "game_sessions_pkey",
@@ -1129,10 +988,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "status",
-            "last_activity_at"
-          ],
+          "columnNames": ["status", "last_activity_at"],
           "composite": true,
           "constraint": false,
           "keyName": "idx_game_sessions_stale",
@@ -1144,64 +1000,40 @@
       "checks": [],
       "foreignKeys": {
         "game_sessions_owner_uuid_foreign": {
-          "columnNames": [
-            "owner_uuid"
-          ],
+          "columnNames": ["owner_uuid"],
           "constraintName": "game_sessions_owner_uuid_foreign",
           "localTableName": "public.game_sessions",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "set null"
         }
       },
       "nativeEnums": {
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -1309,9 +1141,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "token_hash"
-          ],
+          "columnNames": ["token_hash"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_password_reset_tokens_token_hash",
@@ -1319,9 +1149,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "password_reset_tokens_pkey",
@@ -1332,64 +1160,40 @@
       "checks": [],
       "foreignKeys": {
         "password_reset_tokens_user_uuid_foreign": {
-          "columnNames": [
-            "user_uuid"
-          ],
+          "columnNames": ["user_uuid"],
           "constraintName": "password_reset_tokens_user_uuid_foreign",
           "localTableName": "public.password_reset_tokens",
           "referencedTableName": "public.users",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -1505,11 +1309,7 @@
           "scale": null,
           "default": "'USER'",
           "comment": null,
-          "enumItems": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ],
+          "enumItems": ["USER", "ADMIN", "OWNER"],
           "mappedType": "unknown",
           "nativeEnumName": "user_role"
         },
@@ -1606,10 +1406,7 @@
           "scale": null,
           "default": "'FREE'",
           "comment": null,
-          "enumItems": [
-            "FREE",
-            "PREMIUM"
-          ],
+          "enumItems": ["FREE", "PREMIUM"],
           "mappedType": "unknown",
           "nativeEnumName": "user_plan"
         }
@@ -1618,9 +1415,7 @@
       "schema": "public",
       "indexes": [
         {
-          "columnNames": [
-            "avatar_uuid"
-          ],
+          "columnNames": ["avatar_uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_avatar_uuid",
@@ -1628,9 +1423,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "display_name"
-          ],
+          "columnNames": ["display_name"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_display_name",
@@ -1638,9 +1431,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "email"
-          ],
+          "columnNames": ["email"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_email",
@@ -1648,9 +1439,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "google_id"
-          ],
+          "columnNames": ["google_id"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_google_id",
@@ -1658,9 +1447,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "username"
-          ],
+          "columnNames": ["username"],
           "composite": false,
           "constraint": false,
           "keyName": "idx_users_username",
@@ -1668,9 +1455,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "email"
-          ],
+          "columnNames": ["email"],
           "composite": false,
           "constraint": true,
           "keyName": "users_email_unique",
@@ -1678,9 +1463,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "google_id"
-          ],
+          "columnNames": ["google_id"],
           "composite": false,
           "constraint": true,
           "keyName": "users_google_id_unique",
@@ -1688,9 +1471,7 @@
           "primary": false
         },
         {
-          "columnNames": [
-            "uuid"
-          ],
+          "columnNames": ["uuid"],
           "composite": false,
           "constraint": false,
           "keyName": "users_pkey",
@@ -1698,9 +1479,7 @@
           "primary": true
         },
         {
-          "columnNames": [
-            "username"
-          ],
+          "columnNames": ["username"],
           "composite": false,
           "constraint": true,
           "keyName": "users_username_unique",
@@ -1711,15 +1490,11 @@
       "checks": [],
       "foreignKeys": {
         "users_avatar_uuid_foreign": {
-          "columnNames": [
-            "avatar_uuid"
-          ],
+          "columnNames": ["avatar_uuid"],
           "constraintName": "users_avatar_uuid_foreign",
           "localTableName": "public.users",
           "referencedTableName": "public.files",
-          "referencedColumnNames": [
-            "uuid"
-          ],
+          "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
           "deleteRule": "set null"
         }
@@ -1728,47 +1503,27 @@
         "file_status": {
           "name": "file_status",
           "schema": "public",
-          "items": [
-            "PENDING",
-            "PROCESSING",
-            "READY",
-            "FAILED"
-          ]
+          "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
         },
         "game_participant_role": {
           "name": "game_participant_role",
           "schema": "public",
-          "items": [
-            "HOST",
-            "PLAYER"
-          ]
+          "items": ["HOST", "PLAYER"]
         },
         "game_session_status": {
           "name": "game_session_status",
           "schema": "public",
-          "items": [
-            "LOBBY",
-            "RUNNING",
-            "FINISHED",
-            "ABANDONED"
-          ]
+          "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": [
-            "FREE",
-            "PREMIUM"
-          ]
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
           "schema": "public",
-          "items": [
-            "USER",
-            "ADMIN",
-            "OWNER"
-          ]
+          "items": ["USER", "ADMIN", "OWNER"]
         }
       },
       "comment": null
@@ -1778,47 +1533,27 @@
     "file_status": {
       "name": "file_status",
       "schema": "public",
-      "items": [
-        "PENDING",
-        "PROCESSING",
-        "READY",
-        "FAILED"
-      ]
+      "items": ["PENDING", "PROCESSING", "READY", "FAILED"]
     },
     "game_participant_role": {
       "name": "game_participant_role",
       "schema": "public",
-      "items": [
-        "HOST",
-        "PLAYER"
-      ]
+      "items": ["HOST", "PLAYER"]
     },
     "game_session_status": {
       "name": "game_session_status",
       "schema": "public",
-      "items": [
-        "LOBBY",
-        "RUNNING",
-        "FINISHED",
-        "ABANDONED"
-      ]
+      "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
     },
     "user_plan": {
       "name": "user_plan",
       "schema": "public",
-      "items": [
-        "FREE",
-        "PREMIUM"
-      ]
+      "items": ["FREE", "PREMIUM"]
     },
     "user_role": {
       "name": "user_role",
       "schema": "public",
-      "items": [
-        "USER",
-        "ADMIN",
-        "OWNER"
-      ]
+      "items": ["USER", "ADMIN", "OWNER"]
     }
   }
 }

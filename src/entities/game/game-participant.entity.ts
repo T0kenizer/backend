@@ -94,10 +94,18 @@ export class GameParticipant {
   @ManyToOne(() => User, {
     name: 'user_uuid',
     nullable: true,
+    // A seat outlives the account that held it. The link drops, but the same
+    // statement stamps `claimedBy` with `DELETED_USER_CLAIM`, so the row still
+    // says somebody sat here.
+    deleteRule: 'set null',
   })
   user: Nullable<User> = null;
 
-  /** External identity occupying the seat; null while the seat is free. */
+  /**
+   * External identity occupying the seat: null while the seat was never
+   * claimed, the user uuid for a registered player, the anonymous token for a
+   * guest, or `DELETED_USER_CLAIM` once the account behind it was deleted.
+   */
   @Property({
     name: 'claimed_by',
     type: 'varchar',

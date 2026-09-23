@@ -63,9 +63,10 @@ export class GameSession {
 
   @ManyToOne(() => User, {
     name: 'owner_uuid',
-    nullable: false,
+    nullable: true,
+    deleteRule: 'set null',
   })
-  owner!: User;
+  owner: Nullable<User> = null;
 
   @OneToMany(() => GameParticipant, (participant) => participant.session)
   participants = new Collection<GameParticipant>(this);
