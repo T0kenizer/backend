@@ -32,7 +32,7 @@ describe('Auth (e2e)', () => {
   const credentials = {
     username: `e2e_user_${suffix}`,
     email: `e2e_${suffix}@example.com`,
-    password: 'sup3r-secret',
+    password: 'Sup3r-Secret!',
   };
 
   beforeAll(async () => {

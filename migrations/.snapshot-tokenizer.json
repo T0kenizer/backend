@@ -130,7 +130,7 @@
           "referencedTableName": "public.users",
           "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
@@ -148,6 +148,11 @@
           "name": "game_session_status",
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+        },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
@@ -285,7 +290,7 @@
           "referencedTableName": "public.users",
           "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
@@ -303,6 +308,11 @@
           "name": "game_session_status",
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+        },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
@@ -580,6 +590,11 @@
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
+        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
@@ -775,7 +790,7 @@
       "checks": [
         {
           "name": "chk_game_participants_host_has_no_user",
-          "columnName": "role",
+          "columnName": "user_uuid",
           "definition": "CHECK (((role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)))",
           "expression": "(role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)"
         }
@@ -815,6 +830,11 @@
           "name": "game_session_status",
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+        },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
@@ -864,7 +884,7 @@
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": false,
+          "nullable": true,
           "unique": false,
           "length": null,
           "precision": null,
@@ -986,7 +1006,7 @@
           "referencedTableName": "public.users",
           "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "set null"
         }
       },
       "nativeEnums": {
@@ -1004,6 +1024,11 @@
           "name": "game_session_status",
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+        },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
@@ -1141,7 +1166,7 @@
           "referencedTableName": "public.users",
           "referencedColumnNames": ["uuid"],
           "updateRule": "cascade",
-          "deleteRule": "no action"
+          "deleteRule": "cascade"
         }
       },
       "nativeEnums": {
@@ -1159,6 +1184,11 @@
           "name": "game_session_status",
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+        },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
         },
         "user_role": {
           "name": "user_role",
@@ -1362,6 +1392,23 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "uuid"
+        },
+        "plan": {
+          "name": "plan",
+          "type": "user_plan",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'FREE'",
+          "comment": null,
+          "enumItems": ["FREE", "PREMIUM"],
+          "mappedType": "unknown",
+          "nativeEnumName": "user_plan"
         }
       },
       "name": "users",
@@ -1468,6 +1515,11 @@
           "schema": "public",
           "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
         },
+        "user_plan": {
+          "name": "user_plan",
+          "schema": "public",
+          "items": ["FREE", "PREMIUM"]
+        },
         "user_role": {
           "name": "user_role",
           "schema": "public",
@@ -1492,6 +1544,11 @@
       "name": "game_session_status",
       "schema": "public",
       "items": ["LOBBY", "RUNNING", "FINISHED", "ABANDONED"]
+    },
+    "user_plan": {
+      "name": "user_plan",
+      "schema": "public",
+      "items": ["FREE", "PREMIUM"]
     },
     "user_role": {
       "name": "user_role",

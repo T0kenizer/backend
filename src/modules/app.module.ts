@@ -41,8 +41,6 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
         autoLoadEntities: true,
       }),
     }),
-    // A permissive global ceiling; the routes that need a real limit — the
-    // ones a 6-digit code can reach — set their own with @Throttle.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     CommandsModule,
     ConfigModule,

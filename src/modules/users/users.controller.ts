@@ -24,7 +24,10 @@ export class UsersController {
   @ZodSerializerDto(DTOs.CreateUserResponse)
   public async create(@Body() data: DTOs.CreateUserData) {
     const user = await this.usersService.create(data);
-    return wrap(user).toObject();
+    return {
+      ...wrap(user).toObject(),
+      avatarUrl: await this.usersService.buildAvatarUrl(user),
+    };
   }
 
   @Patch(':uuid')
@@ -39,6 +42,9 @@ export class UsersController {
     const target = await this.usersService.getUserByUuid(uuid);
     const user = await this.usersService.partialUpdate(target, data);
 
-    return wrap(user).toObject();
+    return {
+      ...wrap(user).toObject(),
+      avatarUrl: await this.usersService.buildAvatarUrl(user),
+    };
   }
 }

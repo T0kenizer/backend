@@ -21,9 +21,7 @@ export class TurnState {
 
   private readonly policy: TurnPolicy;
   private readonly catalog: ActionDef[];
-  /** The round's participants, seat-ordered, held by reference. */
   private readonly participants: Participant[];
-  private interruptionTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     policy: TurnPolicy,
@@ -53,12 +51,6 @@ export class TurnState {
     return this.catalog;
   }
 
-  /**
-   * Moves the turn to the next participant still in contention. The rotation
-   * walks the full seat order from the current holder — who may already be
-   * folded (a folding action retires them before the turn advances) — so a fold
-   * hands the turn to the _next_ seat, not back to seat 0.
-   */
   advance(): void {
     const seats = this.participants.length;
     const currentIndex = this.participants.findIndex(
@@ -77,41 +69,19 @@ export class TurnState {
     }
   }
 
-  /**
-   * Opens the interruption window when the regime supports it. Returns whether
-   * the window actually opened, so the caller can advance the turn normally
-   * when it did not.
-   */
-  openInterruptionWindow(onExpire?: () => void): boolean {
+  openInterruptionWindow(): boolean {
     if (this.policy.regime !== TurnRegime.SequentialInterruptible) return false;
     if (this.policy.interruptionWindow === null) return false;
 
     this.interruptionOpen = true;
-
-    if (onExpire) {
-      this.interruptionTimer = setTimeout(() => {
-        this.interruptionOpen = false;
-        this.interruptionTimer = undefined;
-        onExpire();
-      }, this.policy.interruptionWindow);
-      this.interruptionTimer.unref?.();
-    }
     return true;
   }
 
   closeInterruptionWindow(): void {
     this.interruptionOpen = false;
-    if (this.interruptionTimer !== undefined) {
-      clearTimeout(this.interruptionTimer);
-      this.interruptionTimer = undefined;
-    }
     this.pendingClaims = [];
   }
 
-  /**
-   * FIFO priority among concurrent claimants. Returns the winning claim and
-   * transfers the active turn to that participant.
-   */
   resolveClaims(): Nullable<InterruptionClaim> {
     if (this.pendingClaims.length === 0) return null;
 

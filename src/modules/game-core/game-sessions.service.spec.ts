@@ -1,13 +1,15 @@
 import type { GameSession } from '@entities/game/game-session.entity';
 import type { User } from '@entities/user.entity';
 import type { EntityRepository } from '@mikro-orm/core';
-import { defaultGameConfig } from '@modules/game-core/game-runtime.presets';
+import { defaultConfigFor } from '@modules/game-core/game-modes';
 import { GameSessionsService } from '@modules/game-core/game-sessions.service';
 import { NotFoundException } from '@nestjs/common';
-import { ParticipantRole } from '@tokenizer/shared/types';
+import { GameMode, ParticipantRole } from '@tokenizer/shared/types';
 
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
 const OWNER_UUID = '22222222-2222-4222-8222-222222222222';
+/** The caller always names the session — the service invents no fallback. */
+const GAME_NAME = "Owner's game";
 
 describe('GameSessionsService', () => {
   let em: { persist: jest.Mock; flush: jest.Mock };
@@ -34,10 +36,12 @@ describe('GameSessionsService', () => {
 
     const { session, participants } = await service.create(
       owner,
-      defaultGameConfig(),
+      defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
     );
 
     expect(session.owner).toBe(owner);
+    expect(session.name).toBe(GAME_NAME);
     expect(participants).toHaveLength(4);
     // 1 session + 4 seats persisted in a single flush
     expect(em.persist).toHaveBeenCalledTimes(5);
@@ -63,7 +67,11 @@ describe('GameSessionsService', () => {
 
   it('stamps a seat when it is claimed', async () => {
     const owner = { uuid: OWNER_UUID, username: 'owner' } as User;
-    const { participants } = await service.create(owner, defaultGameConfig());
+    const { participants } = await service.create(
+      owner,
+      defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
+    );
 
     const claimed = await service.claim(participants[1], 'bob', 'Bob');
 
@@ -75,7 +83,11 @@ describe('GameSessionsService', () => {
 
   it('claiming without a displayName leaves the override unset', async () => {
     const owner = { uuid: OWNER_UUID, username: 'owner' } as User;
-    const { participants } = await service.create(owner, defaultGameConfig());
+    const { participants } = await service.create(
+      owner,
+      defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
+    );
 
     const claimed = await service.claim(participants[1], 'bob');
 
@@ -95,9 +107,11 @@ describe('GameSessionsService', () => {
       await expect(service.getGameSessionByUuid(GAME_UUID)).rejects.toThrow(
         NotFoundException,
       );
+      // `owner` rides along so a snapshot can answer `canAddSeat`, which
+      // depends on the owner's plan.
       expect(repository.findOne).toHaveBeenCalledWith(
         { uuid: GAME_UUID },
-        { populate: ['participants'] },
+        { populate: ['participants', 'owner'] },
       );
     });
   });

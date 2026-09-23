@@ -1,15 +1,14 @@
-import { input, password } from '@inquirer/prompts';
+import { input, password, select } from '@inquirer/prompts';
 import { CreateRequestContext, MikroORM } from '@mikro-orm/core';
 import { UsersService } from '@modules/users/users.service';
 import { createUserDataSchema } from '@tokenizer/shared/schemas';
-import { UserRole } from '@tokenizer/shared/types';
+import { Plan, UserRole } from '@tokenizer/shared/types';
 import { Command, CommandRunner, Option } from 'nest-commander';
 
 interface CreateSuperUserOptions {
   role?: UserRole;
 }
 
-/** Surfaces the schema's own message instead of a generic "invalid". */
 const validateEmail = (value: string) => {
   const result = createUserDataSchema
     .pick({ email: true })
@@ -34,6 +33,10 @@ const validatePassword = (value: string) => {
     result.success || result.error.issues[0]?.message || 'Invalid password'
   );
 };
+
+const SELECTABLE_PLANS = Object.values(Plan).filter(
+  (plan): plan is Exclude<Plan, Plan.Anonymous> => plan !== Plan.Anonymous,
+);
 
 @Command({
   name: 'create-superuser',
@@ -87,11 +90,18 @@ export class CreateSuperUserCommand extends CommandRunner {
           value === passwordValue || 'Passwords do not match',
       });
 
+      const plan = await select({
+        message: 'Plan:',
+        choices: SELECTABLE_PLANS.map((value) => ({ name: value, value })),
+        default: Plan.Premium,
+      });
+
       await this.usersService.create({
         email,
         username,
         password: passwordValue,
         role: options.role ?? UserRole.Admin,
+        plan,
         confirmedAt: new Date(),
       });
 

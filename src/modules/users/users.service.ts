@@ -8,7 +8,8 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { AccountConfirmationsService } from '@modules/account-confirmations/account-confirmations.service';
 import { FilesService } from '@modules/files/files.service';
 import { MailService } from '@modules/mail/mail.service';
-import { BANNED_USERNAMES } from '@modules/users/users.constants';
+import { RedisCacheService } from '@modules/redis/services/redis-cache.service';
+import * as Constants from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
@@ -17,6 +18,10 @@ import slugify from 'slugify';
 import { z } from 'zod';
 
 const HASH_ROUNDS = 10;
+
+function avatarUrlKey(fileUuid: string): string {
+  return `avatar_url:${fileUuid}`;
+}
 
 @Injectable()
 export class UsersService {
@@ -28,6 +33,7 @@ export class UsersService {
     private readonly mailService: MailService,
     private readonly accountConfirmationsService: AccountConfirmationsService,
     private readonly filesService: FilesService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   public async validateUser(
@@ -109,7 +115,7 @@ export class UsersService {
     let candidate = base;
     let suffix = 1;
     while (
-      BANNED_USERNAMES.includes(candidate) ||
+      Constants.BANNED_USERNAMES.includes(candidate) ||
       (await this.usersRepository.findOne({ username: candidate }))
     ) {
       suffix += 1;
@@ -119,7 +125,7 @@ export class UsersService {
   }
 
   public async create(data: RequiredEntityData<User>): Promise<User> {
-    if (BANNED_USERNAMES.includes(data.username))
+    if (Constants.BANNED_USERNAMES.includes(data.username))
       throw new FieldBadRequestException({
         username: `Username "${data.username}" is not allowed`,
       });
@@ -252,5 +258,47 @@ export class UsersService {
 
   private static comparePassword(password: string, hash: string): boolean {
     return bcrypt.compareSync(password, hash);
+  }
+
+  public async buildAvatarUrl(user: User): Promise<Nullable<string>> {
+    if (!user.avatar) return null;
+
+    const file = await user.avatar.load();
+    if (!file) return null;
+
+    const cached = await this.readAvatarUrl(file.uuid);
+    if (cached) return cached;
+
+    const url = await this.filesService.buildSignedUrl(file);
+
+    return this.rememberAvatarUrl(file.uuid, url);
+  }
+
+  private async readAvatarUrl(fileUuid: string): Promise<Nullable<string>> {
+    try {
+      return await this.redisCacheService.client.get(avatarUrlKey(fileUuid));
+    } catch (error) {
+      this.logger.warn(`Avatar URL cache read failed: ${String(error)}`);
+      return null;
+    }
+  }
+
+  private async rememberAvatarUrl(
+    fileUuid: string,
+    url: string,
+  ): Promise<string> {
+    try {
+      const claimed = await this.redisCacheService.client.set(
+        avatarUrlKey(fileUuid),
+        url,
+        { NX: true, PX: Constants.AVATAR_URL_CACHE_TTL_MS },
+      );
+      if (claimed) return url;
+
+      return (await this.readAvatarUrl(fileUuid)) ?? url;
+    } catch (error) {
+      this.logger.warn(`Avatar URL cache write failed: ${String(error)}`);
+      return url;
+    }
   }
 }

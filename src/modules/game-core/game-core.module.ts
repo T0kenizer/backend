@@ -7,6 +7,7 @@ import * as Constants from '@modules/game-core/game-core.constants';
 import { GameLifecycleConsumer } from '@modules/game-core/game-lifecycle.consumer';
 import { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
 import { GamePresenceService } from '@modules/game-core/game-presence.service';
+import { GameQrService } from '@modules/game-core/game-qr.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { GameRuntimeController } from '@modules/game-core/game-runtime.controller';
 import { GameRuntimeGateway } from '@modules/game-core/game-runtime.gateway';
@@ -19,25 +20,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
-/**
- * GameCore runtime module.
- *
- * The split of responsibilities is the point of this module:
- *
- * - `GameSessionsService` owns the persisted rows — the source of truth for
- *   status, seats, balances and activity.
- * - `GameRuntimeService` holds the in-memory aggregate, which is a cache of those
- *   rows, rebuilt from them whenever a room opens.
- * - `GameCodesService` owns the ephemeral 6-digit code in Redis, and Redis holds
- *   nothing else about a game.
- * - `GamePresenceService` answers who is connected, straight off the Socket.IO
- *   adapter.
- * - `GameLifecycleService` / `GameLifecycleConsumer` carry every deferred
- *   decision on a queue, so a restart cannot lose them.
- * - `GameTokensService` issues the per-player token that authorises in-game
- *   actions and reconnections.
- * - `GameRoomsService` orchestrates all of the above.
- */
 @Module({
   imports: [
     MikroOrmModule.forFeature([GameSession, GameParticipant]),
@@ -64,6 +46,7 @@ import { JwtModule } from '@nestjs/jwt';
     GameLifecycleService,
     GameLifecycleConsumer,
     GameTokensService,
+    GameQrService,
   ],
   exports: [GameRuntimeService, GameRoomsService, GameSessionsService],
 })

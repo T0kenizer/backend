@@ -19,10 +19,6 @@ export class Pot {
     this.amount += amount;
   }
 
-  /**
-   * Empties the pot into the winners' balances: split equally, remainder to the
-   * first winner so no chips are lost to integer division.
-   */
   payOut(winners: Participant[]): void {
     if (winners.length === 0 || this.amount === 0) return;
 

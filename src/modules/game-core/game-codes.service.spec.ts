@@ -1,6 +1,7 @@
 import { GameCodesService } from '@modules/game-core/game-codes.service';
 import * as Constants from '@modules/game-core/game-core.constants';
 import type { RedisService } from '@modules/redis/services/redis.service';
+import { JOIN_CODE_REGEX } from '@tokenizer/shared/constants/games.constants';
 
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -75,7 +76,7 @@ describe('GameCodesService', () => {
 
     const code = await service.issue(GAME_UUID);
 
-    expect(code).toMatch(/^\d{6}$/);
+    expect(code).toMatch(JOIN_CODE_REGEX);
     expect(await service.resolve(code)).toBe(GAME_UUID);
     expect(await service.codeFor(GAME_UUID)).toBe(code);
     expect(client.ttls.get(`game_code:${code}`)).toBe(
@@ -115,7 +116,7 @@ describe('GameCodesService', () => {
     // A draw of 42 must read "000042", not "42": the client validates the
     // shape, and a short code would be rejected before it ever resolved.
     for (let i = 0; i < 200; i++) {
-      expect(await service.issue(`${GAME_UUID}-${i}`)).toMatch(/^\d{6}$/);
+      expect(await service.issue(`${GAME_UUID}-${i}`)).toMatch(JOIN_CODE_REGEX);
     }
   });
 

@@ -11,13 +11,6 @@ import {
 } from '@mikro-orm/core';
 import { ParticipantRole } from '@tokenizer/shared/types';
 
-/**
- * A seat of a game session. Seats are declared when the session is created
- * (`config.seating.count` rows, seat 0 being the host's) and later claimed by
- * players: `claimedBy` holds the external identity occupying the seat
- * (authenticated user uuid or anonymous client id), `user` the optional link to
- * a registered account.
- */
 @Entity({
   tableName: 'game_participants',
 })
@@ -58,11 +51,6 @@ export class GameParticipant {
   })
   role!: ParticipantRole;
 
-  /**
-   * Explicit override; null means "no override yet" — the seat falls back to
-   * the claiming user's account displayName, then the config's default seat
-   * name (resolved at snapshot time, not stored here).
-   */
   @Property({
     name: 'display_name',
     type: 'varchar',
@@ -78,7 +66,6 @@ export class GameParticipant {
   })
   initialBalance!: number;
 
-  /** Current balance; refreshed whenever a round resolves. */
   @Property({
     name: 'balance',
     type: 'int',
@@ -86,18 +73,13 @@ export class GameParticipant {
   })
   balance!: number;
 
-  /**
-   * Registered account occupying the seat, once user linking lands. PLAYER
-   * seats only: the host is already carried by `GameSession.owner`, so a HOST
-   * row keeps this empty (enforced by a check constraint).
-   */
   @ManyToOne(() => User, {
     name: 'user_uuid',
     nullable: true,
+    deleteRule: 'set null',
   })
   user: Nullable<User> = null;
 
-  /** External identity occupying the seat; null while the seat is free. */
   @Property({
     name: 'claimed_by',
     type: 'varchar',
