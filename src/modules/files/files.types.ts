@@ -21,3 +21,8 @@ export type FilesQueueJob = {
 export type FilesQueue = Queue<FileJobData[FileJob], void, FileJob>;
 
 export type SignedUrlOptions = Omit<GetSignedUrlConfig, 'action'>;
+
+export interface ProcessedFile {
+  content: Buffer;
+  mimeType: string;
+}

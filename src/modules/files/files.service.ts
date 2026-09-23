@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ALLOWED_MIME_TYPES } from '@tokenizer/shared/constants/files.constants';
 import { FileStatus, FileUploadMode } from '@tokenizer/shared/types';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
@@ -91,18 +92,19 @@ export class FilesService {
     try {
       const processed = await this.process(file, content);
 
-      // The stored bytes differ from the upload, so the recorded size and
-      // checksum must describe what the bucket actually holds (they drive the
-      // Content-Length and ETag of the content route).
-      file.sizeBytes = processed.length;
+      // The stored bytes differ from the upload, so the recorded size, checksum
+      // and mime type must describe what the bucket actually holds (they drive
+      // the Content-Length, ETag and Content-Type of the content route).
+      file.sizeBytes = processed.content.length;
       file.checksumSha256 = createHash('sha256')
-        .update(processed)
+        .update(processed.content)
         .digest('hex');
+      file.mimeType = processed.mimeType;
 
       await this.firebaseService
         .bucket(file.bucketName)
         .file(file.bucketKey)
-        .save(processed, {
+        .save(processed.content, {
           contentType: file.mimeType,
           resumable: false,
         });
@@ -121,28 +123,32 @@ export class FilesService {
 
   /**
    * Re-encodes the image before it reaches the bucket, so anything that is not
-   * pixel data (EXIF, embedded payloads) never gets stored. Encoding to the
-   * declared mime type also keeps the served Content-Type truthful.
+   * pixel data (EXIF, embedded payloads) never gets stored. Every accepted
+   * format is normalised to webp: the bucket then holds a single format, and
+   * smaller objects than the png/jpeg originals. The returned mime type is the
+   * one of the encoded bytes, so the served Content-Type stays truthful.
    */
-  protected async process(file: File, content: Buffer): Promise<Buffer> {
-    // EXIF is discarded by the re-encoding, so the orientation it carries
-    // must be baked into the pixels first.
-    const image = sharp(content).rotate();
-
-    let encoded: sharp.Sharp;
-    switch (file.mimeType) {
-      case 'image/png':
-        encoded = image.png();
-        break;
-      case 'image/jpeg':
-        encoded = image.jpeg();
-        break;
-      default:
-        throw new Error(`Unsupported mime type "${file.mimeType}"`);
+  protected async process(
+    file: File,
+    content: Buffer,
+  ): Promise<Types.ProcessedFile> {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimeType as never)) {
+      throw new Error(`Unsupported mime type "${file.mimeType}"`);
     }
 
+    // EXIF is discarded by the re-encoding, so the orientation it carries
+    // must be baked into the pixels first.
+    // Animations are not kept: sharp decodes the first frame only, so an
+    // animated gif or webp is stored as a still image.
+    const encoded = sharp(content)
+      .rotate()
+      .webp({ quality: Constants.WEBP_QUALITY });
+
     try {
-      return await encoded.toBuffer();
+      return {
+        content: await encoded.toBuffer(),
+        mimeType: Constants.STORED_MIME_TYPE,
+      };
     } catch (error) {
       // The content passed the magic number check but cannot be decoded.
       throw new BadRequestException('Invalid image content', { cause: error });
