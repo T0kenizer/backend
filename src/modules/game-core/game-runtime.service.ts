@@ -131,6 +131,11 @@ export class GameRuntimeService {
     this.getSessionOrThrow(gameId).assertCanAddSeat();
   }
 
+  /** Where a seat sits at the table, by its id. */
+  seatIndexOf(gameId: string, participantId: string): number {
+    return this.getSessionOrThrow(gameId).seatOrThrow(participantId).seatIndex;
+  }
+
   /** The seat a holder identity already occupies, if any. */
   findSeatByHolder(gameId: string, holderId: string): Optional<string> {
     return this.getSessionOrThrow(gameId).seats.find(

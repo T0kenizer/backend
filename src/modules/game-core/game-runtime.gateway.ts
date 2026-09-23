@@ -24,14 +24,13 @@ import {
   GAME_SERVER_EVENTS,
 } from '@tokenizer/shared/constants/games.constants';
 import {
-  addSeatDataSchema,
   attachSocketDataSchema,
-  resolveRoundDataSchema,
   declareWinnersDataSchema,
+  resolveRoundDataSchema,
   submitActionDataSchema,
   updateSeatDataSchema,
-import { GameMode } from '@tokenizer/shared/types';
 } from '@tokenizer/shared/schemas';
+import { GameMode } from '@tokenizer/shared/types';
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 
@@ -156,24 +155,6 @@ export class GameRuntimeGateway
   }
 
   /**
-   * Host only: opens a further seat once every existing one is taken.
-   *
-   * Broadcast as a join rather than an update: to everyone in the room a new
-   * chair appearing is the same kind of event as somebody sitting down, and the
-   * clients already redraw the table on it.
-   */
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.ADD_SEAT)
-  addSeat(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
-    return this.guard(client, async () => {
-      const data = parsePayload(addSeatDataSchema, payload ?? {});
-      const { gameUuid, participantId } = this.boundState(client);
-      const snapshot = await this.rooms.addSeat(gameUuid, participantId, data);
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.PARTICIPANT_JOINED, snapshot);
-      return snapshot;
-    });
-  }
-
-  /**
    * Host only: deals the next hand.
    *
    * It can settle on the spot — antes and blinds alone can put every remaining
@@ -181,6 +162,25 @@ export class GameRuntimeGateway
    * table is told about the settlement rather than left showing a hand nobody
    * can act on.
    */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.START_HAND)
+  startHand(@ConnectedSocket() client: Socket) {
+    return this.guard(client, async () => {
+      const { gameUuid, participantId } = this.boundState(client);
+      const { snapshot, resolution } = await this.rooms.startHand(
+        gameUuid,
+        participantId,
+      );
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_STARTED, snapshot);
+      if (resolution) {
+        this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
+          ...snapshot,
+          resolution,
+        });
+      }
+      return { snapshot, resolution };
+    });
+  }
+
   /**
    * Host only, free mode: opens the next round.
    *
@@ -200,15 +200,18 @@ export class GameRuntimeGateway
     });
   }
 
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.START_HAND)
-  startHand(@ConnectedSocket() client: Socket) {
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.ACTION)
+  action(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
+      const data = parsePayload(submitActionDataSchema, payload);
       const { gameUuid, participantId } = this.boundState(client);
-      const { snapshot, resolution } = await this.rooms.startHand(
+      const { snapshot, resolution } = await this.rooms.submitAction(
         gameUuid,
         participantId,
+        data,
       );
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_STARTED, snapshot);
+
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ACTION_APPLIED, snapshot);
       if (resolution) {
         // Which settlement event this is follows from the resolution itself:
         // it is discriminated on the same `mode` the snapshot is.
@@ -224,31 +227,28 @@ export class GameRuntimeGateway
     });
   }
 
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.ACTION)
-  action(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+  /** Host only: settles the showdown from the table's own verdict. */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.DECLARE_WINNERS)
+  declareWinners(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
     return this.guard(client, async () => {
-      const data = parsePayload(submitActionDataSchema, payload);
+      const data = parsePayload(declareWinnersDataSchema, payload ?? {});
       const { gameUuid, participantId } = this.boundState(client);
-      const { snapshot, resolution } = await this.rooms.submitAction(
+      const { snapshot, resolution } = await this.rooms.declareWinners(
         gameUuid,
         participantId,
-        data,
+        data.awards,
       );
-
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ACTION_APPLIED, snapshot);
-      if (resolution) {
-        this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
-          ...snapshot,
-          resolution,
-        });
-      }
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
+        ...snapshot,
+        resolution,
+      });
       return { snapshot, resolution };
     });
   }
 
-  /** Host only: settles the showdown from the table's own verdict. */
-  @SubscribeMessage(GAME_CLIENT_MESSAGES.DECLARE_WINNERS)
-  declareWinners(
   /** Host only, free mode: settles the round on the winners the table names. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.RESOLVE)
   resolveRound(
@@ -264,25 +264,6 @@ export class GameRuntimeGateway
         data.winnerParticipantIds,
       );
       this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
-        ...snapshot,
-        resolution,
-      });
-      return { snapshot, resolution };
-    });
-  }
-
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: unknown,
-  ) {
-    return this.guard(client, async () => {
-      const data = parsePayload(declareWinnersDataSchema, payload ?? {});
-      const { gameUuid, participantId } = this.boundState(client);
-      const { snapshot, resolution } = await this.rooms.declareWinners(
-        gameUuid,
-        participantId,
-        data.awards,
-      );
-      this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
         ...snapshot,
         resolution,
       });

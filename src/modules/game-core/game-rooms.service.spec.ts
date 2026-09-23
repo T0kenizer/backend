@@ -68,7 +68,7 @@ function persistedSession(
     closedAt: null as Nullable<Date>,
     lastActivityAt: new Date(),
     config: defaultConfigFor(GameMode.Poker),
-    owner: { uuid: OWNER_UUID },
+    owner: { uuid: OWNER_UUID, plan: Plan.Free },
     participants: { getItems: () => rows },
     ...overrides,
   };
@@ -97,6 +97,7 @@ describe('GameRoomsService', () => {
     setStatus: jest.Mock;
     close: jest.Mock;
     findStale: jest.Mock;
+    addParticipant: jest.Mock;
   };
   let users: { getUserByUuid: jest.Mock; findUserByUuid: jest.Mock };
   let codes: {
@@ -150,6 +151,29 @@ describe('GameRoomsService', () => {
           return Promise.resolve(s);
         }),
       findStale: jest.fn().mockResolvedValue([]),
+      addParticipant: jest
+        .fn()
+        .mockImplementation(
+          (
+            _session: GameSession,
+            seatIndex: number,
+            displayName: string,
+            initialBalance: number,
+          ) => {
+            const row = {
+              uuid: crypto.randomUUID(),
+              seatIndex,
+              role: ParticipantRole.Player,
+              displayName,
+              initialBalance,
+              balance: initialBalance,
+              claimedBy: null,
+              claimedAt: null,
+            } as unknown as GameParticipant;
+            rows.push(row);
+            return Promise.resolve(row);
+          },
+        ),
     };
     users = {
       getUserByUuid: jest.fn().mockResolvedValue({
@@ -434,6 +458,76 @@ describe('GameRoomsService', () => {
         BadRequestException,
       );
     });
+
+    describe('pulling up a chair at a full table', () => {
+      /** Fills every declared seat, which is what `canAddSeat` asks for. */
+      const fillTheTable = async () => {
+        for (let seat = 1; seat < rows.length; seat++) {
+          await service.joinGame(GAME_UUID, { seatIndex: seat });
+        }
+      };
+
+      /** Four declared seats against a four-seat cap can never grow. */
+      const withRoomToGrow = () => {
+        (session.owner as { plan: Plan }).plan = Plan.Premium;
+      };
+
+      it('opens a seat and sits the newcomer in it, in one call', async () => {
+        withRoomToGrow();
+        await fillTheTable();
+
+        const result = await service.joinGame(GAME_UUID, {
+          displayName: 'Late',
+          openExtraSeat: true,
+        });
+
+        const seats = result.snapshot.participants;
+        expect(seats).toHaveLength(5);
+        // The chair it opened is the chair it sat in: a table never grows a
+        // seat that nobody is holding.
+        const late = seats.find((p) => p.id === result.participantId);
+        expect(late?.seatIndex).toBe(4);
+        expect(late?.claimed).toBe(true);
+        expect(late?.displayName).toBe('Late');
+        expect(seats.every((p) => p.claimed)).toBe(true);
+      });
+
+      it('refuses while a free chair is still going', async () => {
+        withRoomToGrow();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(/free seat/i);
+        expect(gameSessions.addParticipant).not.toHaveBeenCalled();
+      });
+
+      it("refuses past the owner's plan cap", async () => {
+        // Four declared seats on a plan that stops at four: full is as big as
+        // this table gets, whoever turns up.
+        await fillTheTable();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(gameSessions.addParticipant).not.toHaveBeenCalled();
+      });
+
+      it('refuses at a table whose size the host fixed', async () => {
+        withRoomToGrow();
+        const config = defaultConfigFor(GameMode.Poker);
+        session.config = {
+          ...config,
+          seating: { ...config.seating, allowExtraSeats: false },
+        };
+        runtime.disposeSession(GAME_UUID);
+        await service.ensureRoomOpen(GAME_UUID);
+        await fillTheTable();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(/fixed number of seats/i);
+      });
+    });
   });
 
   describe('host-only transitions', () => {
@@ -454,7 +548,9 @@ describe('GameRoomsService', () => {
     it('lets the HOST seat deal a hand', async () => {
       const { snapshot } = await service.startHand(GAME_UUID, hostSeat);
 
-      expect(snapshot.currentHand).not.toBeNull();
+      expect(
+        snapshot.mode === GameMode.Poker ? snapshot.currentHand : null,
+      ).not.toBeNull();
       expect(gameSessions.setStatus).toHaveBeenCalledWith(
         session,
         GameSessionStatus.Running,

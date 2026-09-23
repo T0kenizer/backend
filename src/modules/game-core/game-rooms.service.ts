@@ -24,25 +24,23 @@ import {
 } from '@nestjs/common';
 import { GAME_SERVER_EVENTS } from '@tokenizer/shared/constants/games.constants';
 import {
-  canCustomizeRules,
   canUseMode,
   maxSeatsFor,
 } from '@tokenizer/shared/constants/plans.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
   GameSessionStatus,
-  type AddSeatData,
   type ClaimSeatData,
   type CreateGameSessionData,
-  type GameResolution,
   type GameConfig,
   type GameModeDescriptor,
+  type GameResolution,
   type GameSnapshot,
   type HandResolution,
   type ParticipantSnapshot,
-  type RoundResolution,
   type PotAward,
   type PublicRoomView,
+  type RoundResolution,
   type SubmitActionData,
   type UpdateSeatData,
 } from '@tokenizer/shared/types';
@@ -267,10 +265,18 @@ export class GameRoomsService {
     const existing = this.runtime.findSeatByHolder(gameUuid, holderId);
     if (existing) return this.seatPlayer(session, existing, holderId);
 
+    // Turning up at a full table: open a chair and sit in it, in one call. Two
+    // calls would have left a seat standing empty in the room whenever the
+    // second one failed — and a table that grows a chair nobody is in is
+    // exactly what `canAddSeat` refuses to grow another one past.
+    const seatIndex = data.openExtraSeat
+      ? this.runtime.seatIndexOf(gameUuid, await this.openSeatFor(session))
+      : data.seatIndex;
+
     const { participantId } = this.runtime.claimSeat(gameUuid, {
       holderId,
       displayName: data.displayName,
-      seatIndex: data.seatIndex,
+      seatIndex,
     });
 
     const row = session.participants
@@ -316,20 +322,30 @@ export class GameRoomsService {
    * first would leave an orphan seat behind every rejected call.
    */
   @CreateRequestContext()
-  async addSeat(
-    gameUuid: string,
-    participantId: string,
-    data: AddSeatData,
-  ): Promise<GameSnapshot> {
-    await this.ensureRoomOpen(gameUuid);
-    this.assertHost(gameUuid, participantId);
+  /**
+   * Opens a further chair at a full table, for the person about to sit in it.
+   *
+   * Deliberately not a host action. The host is not the one who wants the seat
+   * — they are usually mid-hand, looking at the felt — and routing every
+   * latecomer through "ask them to add you" made arriving a negotiation. The
+   * person who turns up pulls up a chair; that is the whole of it.
+   *
+   * Every condition the runtime already applied to a host adding a seat still
+   * applies, because none of them were about who was asking: the table has to
+   * allow extra seats, every existing chair has to be taken (a free one is the
+   * answer to "somebody wants to play"), no deal may be under way, and the
+   * owner's plan caps how far the table can grow.
+   */
+  private async openSeatFor(session: GameSession): Promise<string> {
+    const gameUuid = session.uuid;
     this.runtime.assertCanAddSeat(gameUuid);
 
-    const session = await this.loadPlayableSession(gameUuid);
     const seatCount = session.participants.getItems().length;
     const allowed = maxSeatsFor(session.owner.plan);
     if (seatCount >= allowed) {
-      throw new ForbiddenException(`Your plan allows at most ${allowed} seats`);
+      throw new ForbiddenException(
+        `This table cannot grow past ${allowed} seats`,
+      );
     }
 
     const config = gameConfigSchema.parse(session.config);
@@ -337,8 +353,8 @@ export class GameRoomsService {
     const row = await this.gameSessionsService.addParticipant(
       session,
       seatIndex,
-      data.displayName ?? `Seat ${seatIndex + 1}`,
-      data.initialBalance ?? config.seating.defaultInitialBalance,
+      `Seat ${seatIndex + 1}`,
+      config.seating.defaultInitialBalance,
     );
 
     this.runtime.addSeat(gameUuid, {
@@ -347,8 +363,7 @@ export class GameRoomsService {
       initialBalance: row.initialBalance,
     });
 
-    await this.noteActivity(session);
-    return this.finalize(this.runtime.snapshot(gameUuid), session);
+    return row.uuid;
   }
 
   /**
