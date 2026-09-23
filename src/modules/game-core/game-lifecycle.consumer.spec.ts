@@ -8,9 +8,9 @@ const PARTICIPANT_ID = '22222222-2222-4222-8222-222222222222';
 
 function build() {
   const rooms = {
-    abandonGame: jest.fn().mockResolvedValue(undefined),
+    releaseEmptyRoom: jest.fn().mockResolvedValue(undefined),
     announceDeparture: jest.fn().mockResolvedValue(undefined),
-    sweepStaleSessions: jest.fn().mockResolvedValue(0),
+    sweepIdleRooms: jest.fn().mockResolvedValue(0),
   };
   const presence = {
     isRoomEmpty: jest.fn().mockReturnValue(true),
@@ -31,15 +31,15 @@ function job<Name extends Types.GameLifecycleJob>(
 }
 
 describe('GameLifecycleConsumer', () => {
-  describe('close-empty-room', () => {
+  describe('release-empty-room', () => {
     it('closes a room that is still empty when the job fires', async () => {
       const { consumer, rooms } = build();
 
       await consumer.process(
-        job(Types.GameLifecycleJob.CloseEmptyRoom, { gameUuid: GAME_UUID }),
+        job(Types.GameLifecycleJob.ReleaseEmptyRoom, { gameUuid: GAME_UUID }),
       );
 
-      expect(rooms.abandonGame).toHaveBeenCalledWith(GAME_UUID);
+      expect(rooms.releaseEmptyRoom).toHaveBeenCalledWith(GAME_UUID);
     });
 
     it('leaves the session alone when someone rejoined in the meantime', async () => {
@@ -49,10 +49,10 @@ describe('GameLifecycleConsumer', () => {
       presence.isRoomEmpty.mockReturnValue(false);
 
       await consumer.process(
-        job(Types.GameLifecycleJob.CloseEmptyRoom, { gameUuid: GAME_UUID }),
+        job(Types.GameLifecycleJob.ReleaseEmptyRoom, { gameUuid: GAME_UUID }),
       );
 
-      expect(rooms.abandonGame).not.toHaveBeenCalled();
+      expect(rooms.releaseEmptyRoom).not.toHaveBeenCalled();
     });
   });
 
@@ -95,6 +95,6 @@ describe('GameLifecycleConsumer', () => {
 
     await consumer.process(job(Types.GameLifecycleJob.SweepStaleSessions, {}));
 
-    expect(rooms.sweepStaleSessions).toHaveBeenCalledTimes(1);
+    expect(rooms.sweepIdleRooms).toHaveBeenCalledTimes(1);
   });
 });

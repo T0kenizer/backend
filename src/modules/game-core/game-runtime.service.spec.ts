@@ -37,6 +37,9 @@ function buildSeats(count: number, initialBalance = 1000): SeatInit[] {
  * the runtime snapshot is discriminated on `mode` — so the narrowing is stated
  * once here rather than asserted at each of the twenty reads below.
  */
+/** No sockets in a runtime test, so nobody is connected to anything. */
+const nobodyConnected = () => false;
+
 function asPoker(snapshot: RuntimeSnapshot) {
   if (snapshot.mode !== GameMode.Poker) {
     throw new Error(`Expected a poker snapshot, got ${snapshot.mode}`);
@@ -89,6 +92,7 @@ describe('GameRuntimeService', () => {
       holder
         ? { action, amount }
         : { action, amount, targetParticipantId: target },
+      nobodyConnected,
     );
   }
 
@@ -395,10 +399,12 @@ describe('GameRuntimeService', () => {
       service.startHand(GAME_ID);
 
       expect(() =>
-        service.submitAction(GAME_ID, seatOf('bob'), {
-          targetParticipantId: seatAt(2),
-          action: PokerAction.Call,
-        }),
+        service.submitAction(
+          GAME_ID,
+          seatOf('bob'),
+          { targetParticipantId: seatAt(2), action: PokerAction.Call },
+          nobodyConnected,
+        ),
       ).toThrow(BadRequestException);
     });
 
@@ -442,19 +448,19 @@ describe('GameRuntimeService', () => {
       ).not.toThrow();
     });
 
-    it('treats a claimed seat as covered by its player when presence is unknown', () => {
-      service.claimSeat(GAME_ID, {
-        holderId: 'bob',
-        displayName: 'Bob',
-        seatIndex: 3,
-      });
+    it('refuses a free seat too, once somebody is connected to it', () => {
       service.startHand(GAME_ID);
+      const seat = activeOf(service.snapshot(GAME_ID))!;
 
+      // Claimed or not never enters into it: the same seat that was coverable
+      // a moment ago stops being so the instant somebody answers for it.
       expect(() =>
-        service.submitAction(GAME_ID, hostSeatId(), {
-          targetParticipantId: seatOf('bob'),
-          action: PokerAction.Call,
-        }),
+        service.submitAction(
+          GAME_ID,
+          hostSeatId(),
+          { targetParticipantId: seat, action: PokerAction.Fold },
+          () => true,
+        ),
       ).toThrow(BadRequestException);
     });
   });

@@ -2,6 +2,7 @@ import { Hand } from '@modules/game-core/poker/hand';
 import { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
 import { BadRequestException } from '@nestjs/common';
+import { MIN_SEATS } from '@tokenizer/shared/constants/games.constants';
 import {
   GameSessionStatus,
   HandStatus,
@@ -62,9 +63,9 @@ export class PokerSession extends GameSession<PokerGameConfig> {
     const dealtIn = this.seats.filter(
       (p) => p.status !== ParticipantStatus.Eliminated && p.balance > 0,
     );
-    if (dealtIn.length < 2) {
+    if (dealtIn.length < MIN_SEATS) {
       throw new BadRequestException(
-        'At least 2 seats with chips are required to deal a hand',
+        `At least ${MIN_SEATS} seats with chips are required to deal a hand`,
       );
     }
 

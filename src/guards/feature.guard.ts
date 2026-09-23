@@ -7,18 +7,10 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { hasFeature } from '@tokenizer/shared/constants/plans.constants';
 import { Feature, Plan } from '@tokenizer/shared/types';
+import { hasFeature } from '@tokenizer/shared/utils/plans.utils';
 import type { Request } from 'express';
 
-/**
- * Grants access when the caller's plan holds every feature the route declares.
- * A signed-out caller resolves to `Plan.Anonymous` rather than being
- * special-cased — it is simply a plan that grants nothing.
- *
- * An undecorated route grants nothing: forgetting `@RequiresFeature` must not
- * open the route to everyone (mirrors `AccessGuard`).
- */
 @Injectable()
 export class FeatureGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

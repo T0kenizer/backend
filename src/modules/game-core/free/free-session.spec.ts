@@ -39,6 +39,9 @@ function openSession(config: FreeGameConfig = freeConfig(), seats = 4) {
   return new FreeSession(GAME_ID, config, OWNER_UUID, buildSeats(seats));
 }
 
+/** No sockets in a runtime test, so nobody is connected to anything. */
+const nobodyConnected = () => false;
+
 describe('FreeSession', () => {
   describe('starting a round', () => {
     it('takes the forced bets the host declared, off the seats they name', () => {
@@ -238,14 +241,29 @@ describe('GameRuntimeService, on a free table', () => {
     // A free table pools into one pot, so nothing it produces is a side pot.
     expect(snapshot.currentRound?.pots[0].isSidePot).toBe(false);
 
-    service.submitAction(GAME_ID, seats[0].id, { definitionId: 'fold' });
-    service.submitAction(GAME_ID, seats[1].id, { definitionId: 'fold' });
+    service.submitAction(
+      GAME_ID,
+      seats[0].id,
+      { definitionId: 'fold' },
+      nobodyConnected,
+    );
+    service.submitAction(
+      GAME_ID,
+      seats[1].id,
+      { definitionId: 'fold' },
+      nobodyConnected,
+    );
 
     // Three of four folded leaves the pot uncontested, so the round closes on
     // the move itself rather than waiting on the host.
-    const last = service.submitAction(GAME_ID, seats[2].id, {
-      definitionId: 'fold',
-    });
+    const last = service.submitAction(
+      GAME_ID,
+      seats[2].id,
+      {
+        definitionId: 'fold',
+      },
+      nobodyConnected,
+    );
 
     expect(last.resolution).toEqual({
       mode: GameMode.Free,
@@ -259,9 +277,14 @@ describe('GameRuntimeService, on a free table', () => {
     const { snapshot } = service.startRound(GAME_ID);
 
     expect(() =>
-      service.submitAction(GAME_ID, snapshot.participants[0].id, {
-        action: PokerAction.Fold,
-      }),
+      service.submitAction(
+        GAME_ID,
+        snapshot.participants[0].id,
+        {
+          action: PokerAction.Fold,
+        },
+        nobodyConnected,
+      ),
     ).toThrow(/not playing poker|its own rules/);
   });
 

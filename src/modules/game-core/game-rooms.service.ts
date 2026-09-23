@@ -22,14 +22,14 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { GAME_SERVER_EVENTS } from '@tokenizer/shared/constants/games.constants';
 import {
-  canUseMode,
-  maxSeatsFor,
-} from '@tokenizer/shared/constants/plans.constants';
+  MAX_SEATS,
+  MIN_SEATS,
+} from '@tokenizer/shared/constants/games.constants';
 import { DELETED_USER_CLAIM } from '@tokenizer/shared/constants/users.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
+  GameServerEvent,
   GameSessionStatus,
   Plan,
   type ClaimSeatData,
@@ -46,6 +46,7 @@ import {
   type SubmitActionData,
   type UpdateSeatData,
 } from '@tokenizer/shared/types';
+import { canUseMode, maxSeatsFor } from '@tokenizer/shared/utils/plans.utils';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
@@ -55,25 +56,6 @@ export interface JoinResult {
   participantId: string;
 }
 
-/**
- * Orchestrates game rooms on top of the persisted `GameSession` rows.
- *
- * Three things are kept strictly apart here:
- *
- * - **Postgres** holds everything that must survive: status, seats, balances,
- *   claims, activity. It is the only thing consulted to answer "does this game
- *   exist, and can it still be played?".
- * - **Redis** holds the 6-digit code and nothing else. A room whose code has
- *   lapsed is still perfectly playable by uuid, which is why losing Redis costs
- *   nothing but the shortcut.
- * - **The Socket.IO adapter** holds presence. It is where the connections already
- *   are; duplicating them elsewhere would only create a second answer that can
- *   disagree with the first.
- *
- * The in-memory runtime aggregate is a cache of the persisted rows, not a
- * source of truth: it is rebuilt from them whenever a room opens, and every
- * settlement is written back.
- */
 @Injectable()
 export class GameRoomsService {
   private readonly logger = new Logger(GameRoomsService.name);
@@ -89,11 +71,6 @@ export class GameRoomsService {
     private readonly tokens: GameTokensService,
   ) {}
 
-  /**
-   * Creates a session, mints its code, and seats the owner in the HOST seat.
-   * The owner leaves with a player token like everyone else — host authority is
-   * carried by the seat, not by the identity that happens to hold it.
-   */
   @CreateRequestContext()
   async createGame(
     ownerUuid: string,
@@ -107,28 +84,21 @@ export class GameRoomsService {
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
 
-    // The mode is the whole of what a plan buys about the game, and it is
-    // checked first: a plan that does not include a game cannot open a table
-    // in it, however the rest of the request is shaped.
-    //
-    // There is no second check on the config. How configurable a table is
-    // belongs to the mode rather than to the plan — poker takes its stakes and
-    // nothing else, a free table is nothing but its settings — so a host who
-    // may open the mode may set it up.
     if (!canUseMode(owner.plan, data.mode)) {
       throw new ForbiddenException(
         `Your plan does not include ${data.mode.toLowerCase()}`,
       );
     }
 
-    // Seats are configurable whatever the plan — every host may say who is at
-    // their table — and only the seat count is capped, below.
     const defaults = defaultConfigFor(data.mode);
-    const gameConfig: GameConfig =
+    const gameConfig: GameConfig = gameConfigSchema.parse(
       data.config ??
-      (data.seats
-        ? { ...defaults, seating: { ...defaults.seating, seats: data.seats } }
-        : defaults);
+        (data.seats
+          ? { ...defaults, seating: { ...defaults.seating, seats: data.seats } }
+          : defaults),
+    );
+
+    this.assertSeatBounds(gameConfig.seating.seats.length);
 
     if (gameConfig.seating.seats.length > maxSeatsFor(owner.plan)) {
       throw new ForbiddenException(
@@ -150,9 +120,6 @@ export class GameRoomsService {
     );
     await this.codes.issue(session.uuid);
 
-    // The host seat is seat 0, claimed by the creator as part of creating —
-    // in the runtime as well as the row, or the aggregate would show the chair
-    // empty and hand it to the next player through the door.
     const { participantId } = this.runtime.claimSeat(session.uuid, {
       holderId: owner.uuid,
       seatIndex: 0,
@@ -160,28 +127,14 @@ export class GameRoomsService {
     return this.seatPlayer(session, participantId, owner.uuid);
   }
 
-  /** The games a host may open a table in, and what each one opens with. */
   listModes(): readonly GameModeDescriptor[] {
     return GAME_MODES;
   }
 
-  /**
-   * Resolves a 6-digit code to the session uuid it stands for.
-   *
-   * Returns null for a code that never existed and for one that has expired
-   * alike — the caller must not be able to tell the two apart, or the endpoint
-   * becomes an oracle for which codes were ever issued.
-   */
   async resolveCode(code: string): Promise<Nullable<string>> {
     return this.codes.resolve(code);
   }
 
-  /**
-   * The lightweight public view behind a code: enough for a stranger to confirm
-   * they are joining the right game, and nothing else. Notably not the session
-   * uuid — handing that out is `join-by-code`'s job, and it is rate-limited
-   * separately.
-   */
   @CreateRequestContext()
   async publicRoomView(gameUuid: string): Promise<PublicRoomView> {
     const session =
@@ -197,11 +150,6 @@ export class GameRoomsService {
     };
   }
 
-  /**
-   * Opens the room if it is not already open, rebuilding the runtime aggregate
-   * from the persisted rows. Postgres decides whether the game exists and can
-   * still be played; the runtime is only a cache of what it says.
-   */
   @CreateRequestContext()
   async ensureRoomOpen(gameUuid: string): Promise<GameSnapshot> {
     const session = await this.loadPlayableSession(gameUuid);
@@ -211,26 +159,18 @@ export class GameRoomsService {
       this.runtime.registerSession(
         session.uuid,
         config,
-        // An ownerless table (the account was deleted) rehydrates under the
-        // marker: it is not a uuid, so nothing can ever present it and host
-        // authority is simply gone rather than up for grabs.
         session.owner?.uuid ?? DELETED_USER_CLAIM,
         seatInits(session.participants.getItems()),
       );
+      if (!(await this.codes.codeFor(gameUuid)))
+        await this.codes.issue(gameUuid);
+
       this.logger.log(`Room ${gameUuid} opened from persisted session`);
     }
 
     return this.finalize(this.runtime.snapshot(gameUuid), session);
   }
 
-  /**
-   * Seats a player and issues their token.
-   *
-   * A token presented here is a reconnection: it names the seat its holder
-   * already owns, so a refresh lands back where it left off. Without one, the
-   * identity is decided server-side — the signed-in user's uuid, or a fresh
-   * anonymous id — never anything the client supplied.
-   */
   @CreateRequestContext()
   async joinGame(
     gameUuid: string,
@@ -261,16 +201,10 @@ export class GameRoomsService {
       );
     }
 
-    // A signed-in player rejoining without their token is still the same
-    // person: their uuid finds the seat they already hold.
     const holderId = userUuid ?? `anon:${randomUUID()}`;
     const existing = this.runtime.findSeatByHolder(gameUuid, holderId);
     if (existing) return this.seatPlayer(session, existing, holderId);
 
-    // Turning up at a full table: open a chair and sit in it, in one call. Two
-    // calls would have left a seat standing empty in the room whenever the
-    // second one failed — and a table that grows a chair nobody is in is
-    // exactly what `canAddSeat` refuses to grow another one past.
     const seatIndex = data.openExtraSeat
       ? this.runtime.seatIndexOf(gameUuid, await this.openSeatFor(session))
       : data.seatIndex;
@@ -291,7 +225,6 @@ export class GameRoomsService {
     return this.seatPlayer(session, participantId, holderId);
   }
 
-  /** Renames the caller's own seat; persists the change. */
   @CreateRequestContext()
   async updateSeat(
     gameUuid: string,
@@ -314,35 +247,27 @@ export class GameRoomsService {
     return this.finalize(this.runtime.snapshot(gameUuid), session);
   }
 
-  /**
-   * Host-only: opens a further seat at a full table.
-   *
-   * The order matters. The seating rules are checked first, against the
-   * runtime, so a refusal costs nothing; then the plan cap, which is the one
-   * condition the runtime cannot judge because it has never heard of the owner;
-   * and only then is a row written and the aggregate grown. Creating the row
-   * first would leave an orphan seat behind every rejected call.
-   */
+  private assertSeatBounds(seatCount: number): void {
+    if (seatCount < MIN_SEATS) {
+      throw new BadRequestException(
+        `A table needs at least ${MIN_SEATS} seats`,
+      );
+    }
+    if (seatCount > MAX_SEATS) {
+      throw new BadRequestException(
+        `A table cannot hold more than ${MAX_SEATS} seats`,
+      );
+    }
+  }
+
   @CreateRequestContext()
-  /**
-   * Opens a further chair at a full table, for the person about to sit in it.
-   *
-   * Deliberately not a host action. The host is not the one who wants the seat
-   * — they are usually mid-hand, looking at the felt — and routing every
-   * latecomer through "ask them to add you" made arriving a negotiation. The
-   * person who turns up pulls up a chair; that is the whole of it.
-   *
-   * Every condition the runtime already applied to a host adding a seat still
-   * applies, because none of them were about who was asking: the table has to
-   * allow extra seats, every existing chair has to be taken (a free one is the
-   * answer to "somebody wants to play"), no deal may be under way, and the
-   * owner's plan caps how far the table can grow.
-   */
   private async openSeatFor(session: GameSession): Promise<string> {
     const gameUuid = session.uuid;
     this.runtime.assertCanAddSeat(gameUuid);
 
     const seatCount = session.participants.getItems().length;
+    this.assertSeatBounds(seatCount + 1);
+
     const allowed = maxSeatsFor(session.owner?.plan ?? Plan.Free);
     if (seatCount >= allowed) {
       throw new ForbiddenException(
@@ -368,13 +293,6 @@ export class GameRoomsService {
     return row.uuid;
   }
 
-  /**
-   * Host-only: deals the next hand.
-   *
-   * The deal can settle the hand outright when the antes and blinds leave
-   * everybody all-in, so it answers the same shape an action does — and the
-   * balances are persisted right there, because chips have moved.
-   */
   @CreateRequestContext()
   async startHand(
     gameUuid: string,
@@ -398,13 +316,6 @@ export class GameRoomsService {
     };
   }
 
-  /**
-   * Host-only, free mode: opens the next round.
-   *
-   * No settlement can come out of it — a free round opens on forced bets and
-   * ends when the table says so — which is why this answers a bare snapshot
-   * where {@link startHand} answers a result.
-   */
   @CreateRequestContext()
   async startRound(
     gameUuid: string,
@@ -419,15 +330,12 @@ export class GameRoomsService {
       session,
       GameSessionStatus.Running,
     );
-    // The forced bets have already left the stacks, so the balances have moved
-    // even though nothing has been won yet.
     await this.persistBalances(gameUuid, session);
     await this.codes.touch(gameUuid);
 
     return this.finalize(snapshot, session);
   }
 
-  /** Plays a move; when it settles the deal, balances are persisted. */
   @CreateRequestContext()
   async submitAction(
     gameUuid: string,
@@ -455,7 +363,6 @@ export class GameRoomsService {
     };
   }
 
-  /** Host-only: settles the showdown; balances are persisted. */
   @CreateRequestContext()
   async declareWinners(
     gameUuid: string,
@@ -475,7 +382,6 @@ export class GameRoomsService {
     };
   }
 
-  /** Host-only, free mode: settles the open round; balances are persisted. */
   @CreateRequestContext()
   async resolveRound(
     gameUuid: string,
@@ -495,21 +401,6 @@ export class GameRoomsService {
     };
   }
 
-  /**
-   * Host-only termination: settles the final balances, stamps the row so the
-   * room can never re-open, and retires the code.
-   *
-   * What it deliberately does _not_ do is drop the sockets. The table has to be
-   * told it is over before it is taken apart — the caller broadcasts this very
-   * snapshot as `SESSION_CLOSED`, and tearing the room down first would have
-   * emptied it before the message went out, which is exactly how a table full
-   * of people used to be disconnected without ever being told why.
-   *
-   * So the room outlives the call. Every client switches to the recap, leaves
-   * on its own, and the last one out takes the room with it
-   * ({@link onPlayerDisconnected}); {@link teardownClosedRoom} is the backstop
-   * for the tabs that never leave.
-   */
   @CreateRequestContext()
   async closeGame(
     gameUuid: string,
@@ -523,10 +414,7 @@ export class GameRoomsService {
     await this.gameSessionsService.syncBalances(session, balancesOf(snapshot));
     await this.gameSessionsService.close(session, GameSessionStatus.Finished);
 
-    // The code dies with the game — a table nobody can play is a table nobody
-    // may join — and it goes before the snapshot is finalized so the recap
-    // never shows a code that would be refused.
-    await this.lifecycle.cancelRoomClosure(gameUuid);
+    await this.lifecycle.cancelRoomRelease(gameUuid);
     await this.codes.revoke(gameUuid);
     await this.lifecycle.scheduleRoomTeardown(gameUuid);
 
@@ -534,65 +422,35 @@ export class GameRoomsService {
     return this.finalize(snapshot, session);
   }
 
-  /**
-   * Drops the room of a table that has already ended. Silent by design: the
-   * session was closed, announced and read minutes ago, so there is nothing
-   * left to tell anybody — this only reclaims the room and the aggregate.
-   */
   async teardownClosedRoom(gameUuid: string): Promise<void> {
     if (!this.runtime.hasSession(gameUuid)) return;
     await this.teardown(gameUuid);
     this.logger.log(`Room for the ended session ${gameUuid} reclaimed`);
   }
 
-  /**
-   * The empty-room job's verdict: nobody came back, so the session is over.
-   *
-   * Redis is deliberately left alone — the code's TTL retires it without anyone
-   * having to remember to, which is the whole reason the code has one.
-   */
   @CreateRequestContext()
-  async abandonGame(gameUuid: string): Promise<void> {
+  async releaseEmptyRoom(gameUuid: string): Promise<void> {
     let session: GameSession;
     try {
       session = await this.gameSessionsService.getGameSessionByUuid(gameUuid);
     } catch {
-      return; // Already gone; nothing to abandon.
+      await this.dropRoom(gameUuid);
+      return;
     }
-    if (!session.isOpen) return;
 
     if (this.runtime.hasSession(gameUuid)) {
-      const snapshot = this.runtime.snapshot(gameUuid);
       await this.gameSessionsService.syncBalances(
         session,
-        balancesOf(snapshot),
+        balancesOf(this.runtime.snapshot(gameUuid)),
       );
     }
-    await this.gameSessionsService.close(session, GameSessionStatus.Abandoned);
 
-    // A whole snapshot, not a `{ id, status }` stub. The room is empty by the
-    // time this runs — that is what armed the job — but a socket that raced in
-    // would otherwise be handed a shape with no seats in it, and the recap it
-    // is about to draw is made of seats.
-    this.presence.broadcast(
-      gameUuid,
-      GAME_SERVER_EVENTS.SESSION_CLOSED,
-      this.runtime.hasSession(gameUuid)
-        ? await this.finalize(this.runtime.snapshot(gameUuid), session)
-        : { id: gameUuid, status: GameSessionStatus.Abandoned },
-    );
-    await this.teardown(gameUuid);
+    await this.dropRoom(gameUuid);
     this.logger.log(
-      `Session ${gameUuid} abandoned after an empty grace period`,
+      `Room ${gameUuid} released after an empty grace period; the session can be resumed`,
     );
   }
 
-  /**
-   * The per-player job's verdict: this seat's holder did not come back inside
-   * their grace period. The seat stays theirs — their token still reclaims it,
-   * and freeing a seat mid-round would corrupt the game — but the table is
-   * told, so everyone sees who is actually there.
-   */
   @CreateRequestContext()
   async announceDeparture(
     gameUuid: string,
@@ -601,15 +459,14 @@ export class GameRoomsService {
     await this.broadcastPresence(
       gameUuid,
       participantId,
-      GAME_SERVER_EVENTS.PARTICIPANT_LEFT,
+      GameServerEvent.ParticipantLeft,
     );
   }
 
-  /** Shared body of the two presence announcements. */
   private async broadcastPresence(
     gameUuid: string,
     participantId: string,
-    event: string,
+    event: GameServerEvent,
   ): Promise<void> {
     if (!this.runtime.hasSession(gameUuid)) return;
 
@@ -627,61 +484,53 @@ export class GameRoomsService {
     this.presence.broadcast(gameUuid, event, { ...snapshot, participantId });
   }
 
-  /**
-   * The safety net. Closes sessions still marked playable that have been silent
-   * past the threshold — the ones whose lifecycle job was lost to a restart,
-   * and which nothing else would ever look at again.
-   */
   @CreateRequestContext()
-  async sweepStaleSessions(): Promise<number> {
+  async sweepIdleRooms(): Promise<number> {
     const threshold = new Date(
       Date.now() - Constants.STALE_SESSION_THRESHOLD_MS,
     );
-    const stale = await this.gameSessionsService.findStale(threshold);
 
-    for (const session of stale) {
-      // A session can be stale on paper and busy in fact (a long think between
+    let released = 0;
+    for (const gameUuid of this.runtime.sessionIds()) {
+      // A room can be idle on paper and busy in fact (a long think between
       // actions); presence has the last word, as everywhere else.
-      if (!this.presence.isRoomEmpty(session.uuid)) continue;
-      await this.gameSessionsService.close(
-        session,
-        GameSessionStatus.Abandoned,
-      );
-      await this.teardown(session.uuid);
+      if (!this.presence.isRoomEmpty(gameUuid)) continue;
+
+      let session: Nullable<GameSession> = null;
+      try {
+        session = await this.gameSessionsService.getGameSessionByUuid(gameUuid);
+      } catch {
+        // The row is gone; the room it left behind holds nothing open.
+      }
+      if (session && session.lastActivityAt > threshold) continue;
+
+      if (session?.isOpen) await this.releaseEmptyRoom(gameUuid);
+      else await this.teardown(gameUuid);
+      released++;
     }
 
-    if (stale.length) {
+    if (released) {
       this.logger.warn(
-        `Stale sweep closed ${stale.length} session(s) idle for over ` +
+        `Idle sweep reclaimed ${released} room(s) empty for over ` +
           `${Constants.STALE_SESSION_THRESHOLD_MS / 60_000}min`,
       );
     }
-    return stale.length;
+    return released;
   }
 
-  /** Someone is in the room again: the pending closure no longer applies. */
   async onPlayerConnected(
     gameUuid: string,
     participantId: string,
   ): Promise<void> {
-    await this.lifecycle.cancelRoomClosure(gameUuid);
+    await this.lifecycle.cancelRoomRelease(gameUuid);
     await this.lifecycle.cancelPlayerDeparture(gameUuid, participantId);
     await this.codes.touch(gameUuid);
   }
 
-  /**
-   * A socket dropped. Two independent clocks start: a short one for the player
-   * (a refresh must not read as leaving) and, only if the room is now empty, a
-   * long one for the session itself.
-   */
   async onPlayerDisconnected(
     gameUuid: string,
     participantId: string,
   ): Promise<void> {
-    // A table that has already ended is only waiting for its last viewer to
-    // close the recap. There is no departure to announce — nobody is left to
-    // hear it — and nothing to abandon, so the room goes now rather than
-    // sitting out a grace period meant for tables that might still resume.
     if (this.runtime.isFinished(gameUuid)) {
       if (this.presence.isRoomEmpty(gameUuid)) {
         await this.lifecycle.cancelRoomTeardown(gameUuid);
@@ -692,15 +541,11 @@ export class GameRoomsService {
 
     await this.lifecycle.schedulePlayerDeparture(gameUuid, participantId);
     if (this.presence.isRoomEmpty(gameUuid)) {
-      await this.lifecycle.scheduleRoomClosure(gameUuid);
+      await this.lifecycle.scheduleRoomRelease(gameUuid);
     }
-    // Tell the table straight away: `connected` flipped the moment the socket
-    // went, and staying silent until the grace period expires would leave
-    // everyone looking at a seat that stopped answering fifteen seconds ago.
     await this.announceDisconnect(gameUuid, participantId);
   }
 
-  /** Broadcasts the room as it stands, with this seat now showing as away. */
   @CreateRequestContext()
   async announceDisconnect(
     gameUuid: string,
@@ -709,18 +554,16 @@ export class GameRoomsService {
     await this.broadcastPresence(
       gameUuid,
       participantId,
-      GAME_SERVER_EVENTS.PARTICIPANT_DISCONNECTED,
+      GameServerEvent.ParticipantDisconnected,
     );
   }
 
-  /** Whether a token's seat may drive host-only transitions. */
   private assertHost(gameUuid: string, participantId: string): void {
     if (!this.runtime.isHost(gameUuid, participantId)) {
       throw new ForbiddenException('Only the host can perform this action');
     }
   }
 
-  /** Loads a session and refuses it if it can no longer be played. */
   private async loadPlayableSession(gameUuid: string): Promise<GameSession> {
     const session =
       await this.gameSessionsService.getGameSessionByUuid(gameUuid);
@@ -730,7 +573,6 @@ export class GameRoomsService {
     return session;
   }
 
-  /** Issues the seat's token and returns the join result. */
   private async seatPlayer(
     session: GameSession,
     participantId: string,
@@ -770,21 +612,18 @@ export class GameRoomsService {
     await this.codes.touch(gameUuid);
   }
 
-  /** Drops the runtime cache and the sockets; the rows keep the truth. */
-  private async teardown(gameUuid: string): Promise<void> {
-    await this.lifecycle.cancelRoomClosure(gameUuid);
+  private async dropRoom(gameUuid: string): Promise<void> {
+    await this.lifecycle.cancelRoomRelease(gameUuid);
     await this.lifecycle.cancelRoomTeardown(gameUuid);
-    await this.codes.revoke(gameUuid);
     this.runtime.disposeSession(gameUuid);
     this.presence.closeRoom(gameUuid);
   }
 
-  /**
-   * Completes a runtime snapshot with everything the runtime cannot know: the
-   * live code, the session name, the resolved seat names and avatars, and who
-   * is actually connected. `controller` is dropped here — this shape goes to
-   * every socket in the room.
-   */
+  private async teardown(gameUuid: string): Promise<void> {
+    await this.dropRoom(gameUuid);
+    await this.codes.revoke(gameUuid);
+  }
+
   private async finalize(
     snapshot: RuntimeSnapshot,
     session: GameSession,
@@ -803,37 +642,18 @@ export class GameRoomsService {
       status: session.status,
       joinCode: await this.codes.codeFor(session.uuid),
       participants,
-      // Answered here rather than in the runtime because the plan cap is the
-      // half of the question the aggregate cannot see. A client showing an
-      // "add a seat" button needs both halves, and should not have to learn
-      // the owner's plan to work it out.
       canAddSeat:
         this.runtime.canAddSeat(session.uuid) &&
+        participants.length < MAX_SEATS &&
         participants.length < maxSeatsFor(session.owner?.plan ?? Plan.Free),
     };
   }
 
-  /**
-   * Fills in what the runtime cannot know about a seat: the name to show, the
-   * avatar to draw, and whether anybody is in it.
-   *
-   * Every seat answers all three, free ones included. A free chair still has a
-   * name — the one its declaration gave it — and handing the client a blank to
-   * fill in is how the table and the seat picker ended up inventing two
-   * different words for the same empty chair.
-   *
-   * The avatar is an account's or nothing. An anonymous holder has no account
-   * to take one from and a free seat has no holder at all, so both read null
-   * and the client falls back to the same placeholder it uses everywhere else.
-   */
   private async resolveParticipant(
     p: RawParticipantSnapshot,
     config: GameConfig,
     connected: ReadonlySet<string>,
   ): Promise<ParticipantSnapshot> {
-    // Anonymous holders are prefixed (`anon:<uuid>`) and a seat whose account
-    // was deleted carries the marker, so only a real account uuid ever reaches
-    // the database.
     const account =
       p.controller && z.uuid().safeParse(p.controller).success
         ? await this.usersService.findUserByUuid(p.controller)
@@ -847,8 +667,6 @@ export class GameRoomsService {
       status: p.status,
       claimed: p.controller !== null,
       connected: connected.has(p.id),
-      // A deleted account outranks the seat's configured name: the chair is
-      // still taken, and answering `Seat 3` here would read as a free one.
       displayName:
         p.displayNameOverride ??
         account?.displayName ??

@@ -10,13 +10,8 @@ import {
   Property,
 } from '@mikro-orm/core';
 import { GameSessionStatus, type GameConfig } from '@tokenizer/shared/types';
+import { isGameOver } from '@tokenizer/shared/utils/games.utils';
 
-/**
- * A game session. The uuid is the only identifier that ever reaches this table:
- * the 6-digit join code is ephemeral and lives in Redis alone, so a session
- * carries no column for it — the code can expire, be re-minted, or never exist,
- * without the row knowing.
- */
 @Entity({
   tableName: 'game_sessions',
 })
@@ -36,10 +31,6 @@ export class GameSession {
   })
   name!: string;
 
-  /**
-   * Stored as-is; validated against `gameConfigSchema` at the API boundary on
-   * write and re-validated on read when a room is hydrated.
-   */
   @Property({
     name: 'config',
     type: 'jsonb',
@@ -47,11 +38,6 @@ export class GameSession {
   })
   config!: GameConfig;
 
-  /**
-   * The authoritative lifecycle state. `ABANDONED` is written by the lifecycle
-   * queue when a room stayed empty through its grace period (or by the stale
-   * sweeper); `FINISHED` is a deliberate close by the host.
-   */
   @Enum({
     name: 'status',
     items: () => GameSessionStatus,
@@ -71,10 +57,6 @@ export class GameSession {
   @OneToMany(() => GameParticipant, (participant) => participant.session)
   participants = new Collection<GameParticipant>(this);
 
-  /**
-   * Last time anything happened in this session. The stale-session sweeper
-   * reads it to close sessions whose lifecycle job was lost.
-   */
   @Property({
     name: 'last_activity_at',
     type: 'timestamptz',
@@ -98,12 +80,7 @@ export class GameSession {
   })
   closedAt: Nullable<Date> = null;
 
-  /** Whether the session can still be joined or played. */
   public get isOpen(): boolean {
-    return (
-      this.closedAt === null &&
-      (this.status === GameSessionStatus.Lobby ||
-        this.status === GameSessionStatus.Running)
-    );
+    return this.closedAt === null && !isGameOver(this.status);
   }
 }

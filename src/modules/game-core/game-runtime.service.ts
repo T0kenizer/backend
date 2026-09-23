@@ -29,26 +29,11 @@ import {
   type SubmitActionData,
 } from '@tokenizer/shared/types';
 
-/**
- * The in-memory game runtime. Holds the live aggregates and their lifecycle; no
- * transport and no persistence. The rules themselves live a layer down, in each
- * mode's own runtime (`poker/`, `free/`), which is where they belong: this
- * service neither knows nor decides what a legal move is.
- *
- * What it does know is which mode a session is: the aggregate is built from the
- * config's discriminator, and every call that is a mode's own asks for that
- * mode's session back rather than testing a flag inline.
- */
 @Injectable()
 export class GameRuntimeService {
   private readonly logger = new Logger(GameRuntimeService.name);
   private readonly sessions = new Map<string, GameSession>();
 
-  /**
-   * Registers a runtime session under the persisted `GameSession` uuid — the
-   * in-memory aggregate, the Socket.IO room and the database row all share the
-   * same identifier — building its seats from the persisted rows.
-   */
   registerSession(
     gameId: string,
     config: GameConfig,
@@ -72,16 +57,14 @@ export class GameRuntimeService {
     return this.sessions.has(gameId);
   }
 
-  /** Drops the in-memory aggregate; persisted state is untouched. */
+  sessionIds(): string[] {
+    return [...this.sessions.keys()];
+  }
+
   disposeSession(gameId: string): void {
     this.sessions.delete(gameId);
   }
 
-  /**
-   * Whether the table is over. Answered off the aggregate rather than the row
-   * because the callers are socket-lifecycle ones: they run per disconnect, and
-   * a database read per dropped socket would be a query for every refresh.
-   */
   isFinished(gameId: string): boolean {
     return this.sessions.get(gameId)?.status === GameSessionStatus.Finished;
   }
@@ -90,10 +73,6 @@ export class GameRuntimeService {
     return serializeSession(gameId, this.getSessionOrThrow(gameId));
   }
 
-  /**
-   * Claims a seat for an external identity. Idempotent for an identity that
-   * already holds one (survives reconnects).
-   */
   claimSeat(
     gameId: string,
     params: ClaimParams,
@@ -104,10 +83,6 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
-  /**
-   * Opens a further seat at a full table. The row must already exist — the
-   * runtime and the database share seat ids.
-   */
   addSeat(
     gameId: string,
     params: AddSeatParams,
@@ -118,32 +93,24 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
-  /**
-   * Whether the seating rules permit another seat right now. The plan cap is
-   * the caller's to apply — the runtime has no idea who owns the session.
-   */
   canAddSeat(gameId: string): boolean {
     return this.getSessionOrThrow(gameId).canAddSeat;
   }
 
-  /** {@link canAddSeat}, as a 400 naming the condition that failed. */
   assertCanAddSeat(gameId: string): void {
     this.getSessionOrThrow(gameId).assertCanAddSeat();
   }
 
-  /** Where a seat sits at the table, by its id. */
   seatIndexOf(gameId: string, participantId: string): number {
     return this.getSessionOrThrow(gameId).seatOrThrow(participantId).seatIndex;
   }
 
-  /** The seat a holder identity already occupies, if any. */
   findSeatByHolder(gameId: string, holderId: string): Optional<string> {
     return this.getSessionOrThrow(gameId).seats.find(
       (p) => p.controller === holderId,
     )?.id;
   }
 
-  /** Renames the seat the caller's token binds them to. */
   updateSeat(
     gameId: string,
     params: UpdateSeatParams,
@@ -153,7 +120,6 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
-  /** Poker: deals a hand — the button moves, the antes and blinds go in. */
   startHand(gameId: string): {
     snapshot: RuntimeSnapshot;
     resolution?: HandResolution;
@@ -164,13 +130,10 @@ export class GameRuntimeService {
 
     return {
       snapshot: this.snapshot(gameId),
-      // Antes and blinds alone can put everybody all-in, which settles the
-      // hand before anybody is asked for a move.
       resolution: hand.resolution ?? undefined,
     };
   }
 
-  /** Free mode: opens a round and takes the forced bets the host declared. */
   startRound(gameId: string): { snapshot: RuntimeSnapshot } {
     const session = this.freeSessionOrThrow(gameId);
     const round = session.startRound();
@@ -178,24 +141,17 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId) };
   }
 
-  /**
-   * Plays a move. The deal decides whether it is legal, what it costs and
-   * whether it ends anything; this only says whose seat it lands on and which
-   * vocabulary the payload has to be in. With no `targetParticipantId`, the
-   * seat is the caller's own; the host may instead target any seat nobody is
-   * connected to, acting on its behalf.
-   */
   submitAction(
     gameId: string,
     callerParticipantId: string,
     params: SubmitActionData,
-    isConnected?: (participantId: string) => boolean,
+    isConnected: (participantId: string) => boolean,
   ): { snapshot: RuntimeSnapshot; resolution?: GameResolution } {
     const session = this.getSessionOrThrow(gameId);
     const participant = session.resolveActingParticipant(
       callerParticipantId,
-      params.targetParticipantId,
       isConnected,
+      params.targetParticipantId,
     );
 
     if (session instanceof PokerSession) {
@@ -239,10 +195,6 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), resolution };
   }
 
-  /**
-   * Poker: settles a showdown from the table's own verdict. The app holds the
-   * chips, not the cards: who won is the one thing it has to be told.
-   */
   declareWinners(
     gameId: string,
     awards: PotAward[],
@@ -258,7 +210,6 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), resolution };
   }
 
-  /** Free mode: settles the open round on the winners the table names. */
   resolveRound(
     gameId: string,
     winnerParticipantIds: string[] = [],
@@ -279,7 +230,6 @@ export class GameRuntimeService {
     return snapshot;
   }
 
-  /** Whether the seat carries host authority. */
   isHost(gameId: string, participantId: string): boolean {
     return this.getSessionOrThrow(gameId).isHost(participantId);
   }
@@ -291,13 +241,6 @@ export class GameRuntimeService {
     return session;
   }
 
-  /**
-   * The session, refused unless it is a poker table.
-   *
-   * A 400 rather than a 404: the room exists, it is simply not playing the game
-   * the caller is speaking — which is a client calling the wrong route, not a
-   * missing session.
-   */
   private pokerSessionOrThrow(gameId: string): PokerSession {
     const session = this.getSessionOrThrow(gameId);
     if (!(session instanceof PokerSession)) {
@@ -306,7 +249,6 @@ export class GameRuntimeService {
     return session;
   }
 
-  /** {@link pokerSessionOrThrow}, for the free table's own calls. */
   private freeSessionOrThrow(gameId: string): FreeSession {
     const session = this.getSessionOrThrow(gameId);
     if (!(session instanceof FreeSession)) {

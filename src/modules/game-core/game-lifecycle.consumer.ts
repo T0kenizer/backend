@@ -5,15 +5,6 @@ import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 
-/**
- * Runs the deferred lifecycle decisions.
- *
- * Every branch re-reads presence before acting. A job was scheduled because the
- * room looked empty minutes ago; by the time it runs, someone may have
- * reconnected, and closing the session under them would be worse than never
- * closing it at all. The check is cheap and the race is real, so it is not
- * optional.
- */
 @Processor(Constants.GAME_LIFECYCLE_QUEUE, {
   concurrency: Constants.WORKER_CONCURRENCY,
 })
@@ -29,29 +20,24 @@ export class GameLifecycleConsumer extends WorkerHost {
 
   public async process(job: Types.GameLifecycleQueueJob): Promise<void> {
     switch (job.name) {
-      case Types.GameLifecycleJob.CloseEmptyRoom: {
+      case Types.GameLifecycleJob.ReleaseEmptyRoom: {
         const { gameUuid } = job.data;
         // Someone rejoined while the job sat in the queue.
         if (!this.presence.isRoomEmpty(gameUuid)) {
           this.logger.log(`Room ${gameUuid} refilled; leaving it open`);
           break;
         }
-        await this.rooms.abandonGame(gameUuid);
+        await this.rooms.releaseEmptyRoom(gameUuid);
         break;
       }
 
       case Types.GameLifecycleJob.TeardownClosedRoom: {
-        // No presence check, unlike every other branch: this room belongs to a
-        // table that is already over. Whoever is still connected is reading the
-        // recap off a snapshot they already hold, so dropping the socket costs
-        // them nothing.
         await this.rooms.teardownClosedRoom(job.data.gameUuid);
         break;
       }
 
       case Types.GameLifecycleJob.PlayerDisconnected: {
         const { gameUuid, participantId } = job.data;
-        // They refreshed the page and are already back.
         if (this.presence.isParticipantConnected(gameUuid, participantId))
           break;
         await this.rooms.announceDeparture(gameUuid, participantId);
@@ -59,7 +45,7 @@ export class GameLifecycleConsumer extends WorkerHost {
       }
 
       case Types.GameLifecycleJob.SweepStaleSessions: {
-        await this.rooms.sweepStaleSessions();
+        await this.rooms.sweepIdleRooms();
         break;
       }
     }

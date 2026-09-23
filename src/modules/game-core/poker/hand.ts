@@ -4,6 +4,7 @@ import { legalActionsFor } from '@modules/game-core/poker/legal-actions';
 import { buildPots, type PotLayer } from '@modules/game-core/poker/pots';
 import type { Participant } from '@modules/game-core/runtime/participant';
 import { BadRequestException } from '@nestjs/common';
+import { MIN_SEATS } from '@tokenizer/shared/constants/games.constants';
 import {
   GameMode,
   HandEndReason,
@@ -80,8 +81,8 @@ export class Hand {
   private readonly potIds: string[];
 
   constructor(params: HandParams) {
-    if (params.order.length < 2) {
-      throw new BadRequestException('A hand needs at least 2 seats');
+    if (params.order.length < MIN_SEATS) {
+      throw new BadRequestException(`A hand needs at least ${MIN_SEATS} seats`);
     }
 
     this.id = crypto.randomUUID();

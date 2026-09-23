@@ -39,13 +39,13 @@ describe('GameLifecycleService', () => {
   it('defers an empty room closure under a job id derived from the game', async () => {
     const { service, queue } = build();
 
-    await service.scheduleRoomClosure(GAME_UUID);
+    await service.scheduleRoomRelease(GAME_UUID);
 
     expect(queue.add).toHaveBeenCalledWith(
-      Types.GameLifecycleJob.CloseEmptyRoom,
+      Types.GameLifecycleJob.ReleaseEmptyRoom,
       { gameUuid: GAME_UUID },
       expect.objectContaining({
-        jobId: Types.closeEmptyRoomJobId(GAME_UUID),
+        jobId: Types.releaseEmptyRoomJobId(GAME_UUID),
         delay: Constants.ROOM_EMPTY_GRACE_MS,
       }),
     );
@@ -54,13 +54,13 @@ describe('GameLifecycleService', () => {
   it('cancels a pending closure by that same derived id', async () => {
     const { service, queue } = build();
 
-    await service.scheduleRoomClosure(GAME_UUID);
-    await service.cancelRoomClosure(GAME_UUID);
+    await service.scheduleRoomRelease(GAME_UUID);
+    await service.cancelRoomRelease(GAME_UUID);
 
     // The derived id is the entire reason a join can call this off without
     // having kept a handle on the job.
     expect(queue.remove).toHaveBeenCalledWith(
-      Types.closeEmptyRoomJobId(GAME_UUID),
+      Types.releaseEmptyRoomJobId(GAME_UUID),
     );
   });
 
@@ -96,7 +96,7 @@ describe('GameLifecycleService', () => {
 
     // Nothing pending is exactly what the caller wanted; the job having
     // already fired must not turn a reconnection into an error.
-    await expect(service.cancelRoomClosure(GAME_UUID)).resolves.toBeUndefined();
+    await expect(service.cancelRoomRelease(GAME_UUID)).resolves.toBeUndefined();
   });
 
   it('keeps the two grace periods independent', () => {
@@ -121,7 +121,7 @@ describe('lifecycle job ids', () => {
   const SEAT = '22222222-2222-4222-8222-222222222222';
 
   it.each([
-    ['close-empty-room', Types.closeEmptyRoomJobId(GAME)],
+    ['release-empty-room', Types.releaseEmptyRoomJobId(GAME)],
     ['teardown-closed-room', Types.teardownClosedRoomJobId(GAME)],
     ['player-disconnected', Types.playerDisconnectedJobId(GAME, SEAT)],
   ])('mints %s without a colon BullMQ would refuse', (_name, jobId) => {
@@ -129,7 +129,7 @@ describe('lifecycle job ids', () => {
   });
 
   it('keeps one id per room and per seat', () => {
-    expect(Types.closeEmptyRoomJobId(GAME)).not.toBe(
+    expect(Types.releaseEmptyRoomJobId(GAME)).not.toBe(
       Types.teardownClosedRoomJobId(GAME),
     );
     expect(Types.playerDisconnectedJobId(GAME, SEAT)).toContain(SEAT);

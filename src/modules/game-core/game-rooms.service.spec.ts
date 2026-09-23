@@ -98,7 +98,6 @@ describe('GameRoomsService', () => {
     touch: jest.Mock;
     setStatus: jest.Mock;
     close: jest.Mock;
-    findStale: jest.Mock;
     addParticipant: jest.Mock;
   };
   let users: { getUserByUuid: jest.Mock; findUserByUuid: jest.Mock };
@@ -116,8 +115,8 @@ describe('GameRoomsService', () => {
     closeRoom: jest.Mock;
   };
   let lifecycle: {
-    scheduleRoomClosure: jest.Mock;
-    cancelRoomClosure: jest.Mock;
+    scheduleRoomRelease: jest.Mock;
+    cancelRoomRelease: jest.Mock;
     scheduleRoomTeardown: jest.Mock;
     cancelRoomTeardown: jest.Mock;
     schedulePlayerDeparture: jest.Mock;
@@ -152,7 +151,6 @@ describe('GameRoomsService', () => {
           (s as { closedAt: Nullable<Date> }).closedAt = new Date();
           return Promise.resolve(s);
         }),
-      findStale: jest.fn().mockResolvedValue([]),
       addParticipant: jest
         .fn()
         .mockImplementation(
@@ -201,8 +199,8 @@ describe('GameRoomsService', () => {
       closeRoom: jest.fn(),
     };
     lifecycle = {
-      scheduleRoomClosure: jest.fn().mockResolvedValue(undefined),
-      cancelRoomClosure: jest.fn().mockResolvedValue(undefined),
+      scheduleRoomRelease: jest.fn().mockResolvedValue(undefined),
+      cancelRoomRelease: jest.fn().mockResolvedValue(undefined),
       scheduleRoomTeardown: jest.fn().mockResolvedValue(undefined),
       cancelRoomTeardown: jest.fn().mockResolvedValue(undefined),
       schedulePlayerDeparture: jest.fn().mockResolvedValue(undefined),
@@ -635,7 +633,7 @@ describe('GameRoomsService', () => {
       expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
       expect(runtime.hasSession(GAME_UUID)).toBe(false);
       // Nothing to abandon and nobody to tell: the table is already over.
-      expect(lifecycle.scheduleRoomClosure).not.toHaveBeenCalled();
+      expect(lifecycle.scheduleRoomRelease).not.toHaveBeenCalled();
       expect(lifecycle.schedulePlayerDeparture).not.toHaveBeenCalled();
     });
 
@@ -676,7 +674,7 @@ describe('GameRoomsService', () => {
         GAME_UUID,
         rows[0].uuid,
       );
-      expect(lifecycle.scheduleRoomClosure).toHaveBeenCalledWith(GAME_UUID);
+      expect(lifecycle.scheduleRoomRelease).toHaveBeenCalledWith(GAME_UUID);
     });
 
     it('tells the table immediately, without waiting out the grace period', async () => {
@@ -697,13 +695,13 @@ describe('GameRoomsService', () => {
       await service.onPlayerDisconnected(GAME_UUID, rows[0].uuid);
 
       expect(lifecycle.schedulePlayerDeparture).toHaveBeenCalled();
-      expect(lifecycle.scheduleRoomClosure).not.toHaveBeenCalled();
+      expect(lifecycle.scheduleRoomRelease).not.toHaveBeenCalled();
     });
 
     it('calls both clocks off and slides the code when someone connects', async () => {
       await service.onPlayerConnected(GAME_UUID, rows[0].uuid);
 
-      expect(lifecycle.cancelRoomClosure).toHaveBeenCalledWith(GAME_UUID);
+      expect(lifecycle.cancelRoomRelease).toHaveBeenCalledWith(GAME_UUID);
       expect(lifecycle.cancelPlayerDeparture).toHaveBeenCalledWith(
         GAME_UUID,
         rows[0].uuid,
@@ -712,7 +710,7 @@ describe('GameRoomsService', () => {
     });
   });
 
-  describe('abandonGame', () => {
+  describe('releaseEmptyRoom', () => {
     beforeEach(async () => {
       await service.createGame(OWNER_UUID, {
         name: GAME_NAME,
@@ -720,24 +718,47 @@ describe('GameRoomsService', () => {
       });
     });
 
-    it('marks the session abandoned and tears the room down', async () => {
-      await service.abandonGame(GAME_UUID);
+    it('drops the room without ending the game', async () => {
+      await service.releaseEmptyRoom(GAME_UUID);
 
-      expect(gameSessions.close).toHaveBeenCalledWith(
-        session,
-        GameSessionStatus.Abandoned,
-      );
       expect(gameSessions.syncBalances).toHaveBeenCalled();
       expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
       expect(runtime.hasSession(GAME_UUID)).toBe(false);
+      // An empty table is not a finished one: nothing is closed, and the code
+      // is left to lapse on its own TTL.
+      expect(gameSessions.close).not.toHaveBeenCalled();
+      expect(session.status).toBe(GameSessionStatus.Lobby);
+      expect(session.closedAt).toBeNull();
+      expect(codes.revoke).not.toHaveBeenCalled();
+    });
+
+    it('tells nobody, because there is nobody left to tell', async () => {
+      presence.broadcast.mockClear();
+
+      await service.releaseEmptyRoom(GAME_UUID);
+
+      expect(presence.broadcast).not.toHaveBeenCalled();
+    });
+
+    it('re-opens the session from its rows when somebody comes back', async () => {
+      await service.releaseEmptyRoom(GAME_UUID);
+      // The code lapsed while the table stood empty.
+      codes.codeFor.mockResolvedValue(null);
+      codes.issue.mockClear();
+
+      const snapshot = await service.ensureRoomOpen(GAME_UUID);
+
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+      expect(snapshot.participants).toHaveLength(rows.length);
+      expect(codes.issue).toHaveBeenCalledWith(GAME_UUID);
     });
 
     it('does nothing to a session that is already closed', async () => {
       session.status = GameSessionStatus.Finished;
       (session as { closedAt: Nullable<Date> }).closedAt = new Date();
-      gameSessions.close.mockClear();
+      gameSessions.syncBalances.mockClear();
 
-      await service.abandonGame(GAME_UUID);
+      await service.releaseEmptyRoom(GAME_UUID);
 
       expect(gameSessions.close).not.toHaveBeenCalled();
     });
@@ -747,31 +768,50 @@ describe('GameRoomsService', () => {
         new NotFoundException('Game session not found'),
       );
 
-      await expect(service.abandonGame(GAME_UUID)).resolves.toBeUndefined();
+      await expect(
+        service.releaseEmptyRoom(GAME_UUID),
+      ).resolves.toBeUndefined();
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
     });
   });
 
-  describe('sweepStaleSessions', () => {
-    it('closes a stale session whose room really is empty', async () => {
-      gameSessions.findStale.mockResolvedValue([session]);
-      presence.isRoomEmpty.mockReturnValue(true);
-
-      await expect(service.sweepStaleSessions()).resolves.toBe(1);
-      expect(gameSessions.close).toHaveBeenCalledWith(
-        session,
-        GameSessionStatus.Abandoned,
-      );
+  describe('sweepIdleRooms', () => {
+    beforeEach(async () => {
+      await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
+        mode: GameMode.Poker,
+      });
     });
 
-    it('spares a session that looks stale but still has players in it', async () => {
-      // A long think between actions is not an abandoned game; presence has
-      // the last word here as it does everywhere else.
-      gameSessions.findStale.mockResolvedValue([session]);
+    /** Older than the threshold the sweep measures silence against. */
+    const wentQuietLongAgo = () => {
+      session.lastActivityAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    };
+
+    it('reclaims a room left open by a lost release job', async () => {
+      wentQuietLongAgo();
+      presence.isRoomEmpty.mockReturnValue(true);
+
+      await expect(service.sweepIdleRooms()).resolves.toBe(1);
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
+      // Reclaiming memory, not ending a game.
+      expect(gameSessions.close).not.toHaveBeenCalled();
+      expect(session.closedAt).toBeNull();
+    });
+
+    it('spares a room that looks idle but still has players in it', async () => {
+      wentQuietLongAgo();
       presence.isRoomEmpty.mockReturnValue(false);
 
-      await service.sweepStaleSessions();
+      await expect(service.sweepIdleRooms()).resolves.toBe(0);
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+    });
 
-      expect(gameSessions.close).not.toHaveBeenCalled();
+    it('leaves a room that only just emptied to its grace period', async () => {
+      presence.isRoomEmpty.mockReturnValue(true);
+
+      await expect(service.sweepIdleRooms()).resolves.toBe(0);
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
     });
   });
 

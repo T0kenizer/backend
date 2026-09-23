@@ -2,6 +2,7 @@ import { Round } from '@modules/game-core/free/round';
 import { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
 import { BadRequestException } from '@nestjs/common';
+import { MIN_SEATS } from '@tokenizer/shared/constants/games.constants';
 import {
   EndResolution,
   GameMode,
@@ -61,9 +62,9 @@ export class FreeSession extends GameSession<FreeGameConfig> {
     const contenders = this.seats.filter(
       (p) => p.status !== ParticipantStatus.Eliminated,
     );
-    if (contenders.length < 2) {
+    if (contenders.length < MIN_SEATS) {
       throw new BadRequestException(
-        'At least 2 non-eliminated seats are required',
+        `At least ${MIN_SEATS} non-eliminated seats are required`,
       );
     }
 
