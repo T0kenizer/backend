@@ -19,17 +19,23 @@ const config: Config = {
     '!src/**/*.d.ts',
   ],
   coverageDirectory: './coverage',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
+    '^@commands/(.*)$': '<rootDir>/src/modules/commands/$1',
     '^@decorators/(.*)$': '<rootDir>/src/decorators/$1',
     '^@entities/(.*)$': '<rootDir>/src/entities/$1',
     '^@guards/(.*)$': '<rootDir>/src/guards/$1',
+    '^@interceptors/(.*)$': '<rootDir>/src/interceptors/$1',
     '^@modules/(.*)$': '<rootDir>/src/modules/$1',
+    '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@factories/(.*)$': '<rootDir>/test/factories/$1',
     '^@test/(.*)$': '<rootDir>/test/$1',
-    'package.json': '<rootDir>/package.json',
+    // Anchored: unanchored, this also caught dependencies resolving their own
+    // `../package.json` (sharp reads `config.libvips` from it) and handed them
+    // ours, which fails at import time. Only `src/swagger.ts` wants this.
+    '^package\\.json$': '<rootDir>/package.json',
   },
 };
 

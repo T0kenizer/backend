@@ -11,11 +11,11 @@ export const configSchema = z.object({
   POSTGRES_PASSWORD: z.string().nonempty(),
   POSTGRES_DB: z.string().nonempty(),
 
-  SMTP_HOST: z.string().nonempty(),
+  SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().default(1025),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  SMTP_FROM: z.string().nonempty(),
+  SMTP_FROM_DOMAIN: z.string().optional(),
 
   REDIS_HOST: z.string().nonempty(),
   REDIS_PORT: z.coerce.number().default(6379),

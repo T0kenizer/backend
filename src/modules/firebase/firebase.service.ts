@@ -32,7 +32,6 @@ export class FirebaseService implements OnModuleDestroy {
     return getStorage(this.app);
   }
 
-  /** Defaults to the bucket configured via `FIREBASE_STORAGE_BUCKET`. */
   public bucket(name?: string): Types.Bucket {
     return this.storage.bucket(name);
   }

@@ -11,7 +11,7 @@ import {
   type Ref,
 } from '@mikro-orm/core';
 import * as Constants from '@tokenizer/shared/constants/users.constants';
-import { UserRole } from '@tokenizer/shared/types';
+import { Plan, UserRole } from '@tokenizer/shared/types';
 
 @Entity({
   tableName: 'users',
@@ -88,6 +88,15 @@ export class User {
     default: UserRole.User,
   })
   role!: Opt<UserRole>;
+
+  @Enum({
+    name: 'plan',
+    items: () => [Plan.Free, Plan.Premium],
+    nativeEnumName: 'user_plan',
+    nullable: false,
+    default: Plan.Free,
+  })
+  plan!: Opt<Exclude<Plan, Plan.Anonymous>>;
 
   @Property({
     name: 'created_at',

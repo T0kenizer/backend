@@ -1,32 +1,40 @@
 import { wrap } from '@mikro-orm/core';
 import {
   AUTH_COOKIE_NAME,
-  REMEMBER_ME_SESSION_TIMEOUT_MS,
+  EXTENDED_SESSION_TIMEOUT_MS,
   SESSION_TIMEOUT_MS,
 } from '@modules/sessions/sessions.constants';
+import { UsersService } from '@modules/users/users.service';
 import { Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 @Injectable()
 export class SessionsService {
-  public create(req: Request, rememberMe: boolean = false) {
+  constructor(private readonly usersService: UsersService) {}
+
+  public async create(req: Request, stayConnected: boolean = false) {
     const user = req.user;
+    if (!user) throw new Error('No authenticated user on request');
+
+    const avatarUrl = await this.usersService.buildAvatarUrl(user);
 
     return new Promise((resolve, reject) => {
-      if (!user) return reject(new Error('No authenticated user on request'));
-
       req.login(user, (error: Error) => {
         if (error) return reject(error);
 
-        const expiresIn = rememberMe
-          ? REMEMBER_ME_SESSION_TIMEOUT_MS
+        const expiresIn = stayConnected
+          ? EXTENDED_SESSION_TIMEOUT_MS
           : SESSION_TIMEOUT_MS;
 
         req.session.cookie.maxAge = expiresIn;
-        req.session.rememberMe = rememberMe;
+        req.session.rolling = stayConnected;
+
+        if (!stayConnected)
+          req.session.absoluteExpiresAt = Date.now() + expiresIn;
+        else delete req.session.absoluteExpiresAt;
 
         resolve({
-          user: wrap(user).toObject(),
+          user: { ...wrap(user).toObject(), avatarUrl },
           expiresAt: new Date(Date.now() + expiresIn),
           expiresIn,
         });
@@ -34,11 +42,17 @@ export class SessionsService {
     });
   }
 
-  public retrieve(req: Request) {
-    const expiresIn = req.session.cookie.maxAge ?? SESSION_TIMEOUT_MS;
+  public async retrieve(req: Request) {
+    const expiresIn = Math.max(
+      0,
+      req.session.cookie.maxAge ?? SESSION_TIMEOUT_MS,
+    );
 
     return {
-      user: req.user!,
+      user: {
+        ...wrap(req.user!).toObject(),
+        avatarUrl: await this.usersService.buildAvatarUrl(req.user!),
+      },
       expiresAt: new Date(Date.now() + expiresIn),
       expiresIn,
     };

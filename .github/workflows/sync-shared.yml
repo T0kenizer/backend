@@ -1,0 +1,55 @@
+name: Sync @tokenizer/shared
+
+on:
+  push:
+    branches: [main, develop]
+  repository_dispatch:
+    types: [shared-updated]
+  workflow_dispatch:
+
+concurrency:
+  group: sync-shared-${{ github.event.client_payload.branch || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # the bot's own bump commit triggers a push event: nothing to sync there
+    if: github.event_name != 'push' || !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.client_payload.branch || github.ref_name }}
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.TOKENIZER_APP_ID }}
+          private-key: ${{ secrets.TOKENIZER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Point @tokenizer/shared to shared#${{ env.BRANCH }}
+        run: npm install --package-lock-only --ignore-scripts "@tokenizer/shared@github:T0kenizer/shared#$BRANCH"
+
+      - name: Commit if changed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          git diff --quiet package.json package-lock.json && exit 0
+          SHA=$(node -p "require('./package-lock.json').packages['node_modules/@tokenizer/shared'].resolved.split('#')[1].slice(0, 7)")
+          USER_ID=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: bump @tokenizer/shared to $BRANCH@$SHA"
+          git push

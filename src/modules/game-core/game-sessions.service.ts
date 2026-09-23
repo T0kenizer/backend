@@ -1,0 +1,160 @@
+import { GameParticipant } from '@entities/game/game-participant.entity';
+import { GameSession } from '@entities/game/game-session.entity';
+import { User } from '@entities/user.entity';
+import { EntityRepository } from '@mikro-orm/core';
+import { InjectRepository } from '@mikro-orm/nestjs';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  GameSessionStatus,
+  ParticipantRole,
+  type GameConfig,
+} from '@tokenizer/shared/types';
+import { z } from 'zod';
+
+@Injectable()
+export class GameSessionsService {
+  private readonly logger = new Logger(GameSessionsService.name);
+
+  constructor(
+    @InjectRepository(GameSession)
+    private readonly gameSessionsRepository: EntityRepository<GameSession>,
+  ) {}
+
+  public async create(
+    owner: User,
+    config: GameConfig,
+    name: string,
+  ): Promise<{ session: GameSession; participants: GameParticipant[] }> {
+    const em = this.gameSessionsRepository.getEntityManager();
+
+    const session = new GameSession();
+    session.owner = owner;
+    session.config = config;
+    session.name = name;
+    session.status = GameSessionStatus.Lobby;
+    em.persist(session);
+
+    const participants: GameParticipant[] = [];
+    config.seating.seats.forEach((seat, seatIndex) => {
+      const participant = new GameParticipant();
+      participant.session = session;
+      participant.seatIndex = seatIndex;
+      participant.role =
+        seatIndex === 0 ? ParticipantRole.Host : ParticipantRole.Player;
+      participant.initialBalance =
+        seat.initialBalance ?? config.seating.defaultInitialBalance;
+      participant.balance = participant.initialBalance;
+
+      em.persist(participant);
+      participants.push(participant);
+    });
+
+    await em.flush();
+    this.logger.log(
+      `Created game session ${session.uuid} with ${participants.length} seats`,
+    );
+
+    return { session, participants };
+  }
+
+  public async addParticipant(
+    session: GameSession,
+    seatIndex: number,
+    displayName: string,
+    initialBalance: number,
+  ): Promise<GameParticipant> {
+    const em = this.gameSessionsRepository.getEntityManager();
+
+    const participant = new GameParticipant();
+    participant.session = session;
+    participant.seatIndex = seatIndex;
+    participant.role = ParticipantRole.Player;
+    participant.displayName = displayName;
+    participant.initialBalance = initialBalance;
+    participant.balance = initialBalance;
+
+    em.persist(participant);
+    await em.flush();
+
+    this.logger.log(`Added seat ${seatIndex} to game session ${session.uuid}`);
+
+    return participant;
+  }
+
+  public async getGameSessionByUuid(uuid: string): Promise<GameSession> {
+    if (!z.uuid().safeParse(uuid).success)
+      throw new NotFoundException('Game session not found');
+
+    const session = await this.gameSessionsRepository.findOne(
+      { uuid },
+      { populate: ['participants', 'owner'] },
+    );
+
+    if (!session) throw new NotFoundException('Game session not found');
+
+    return session;
+  }
+
+  public async claim(
+    participant: GameParticipant,
+    holderId: string,
+    displayName?: string,
+  ): Promise<GameParticipant> {
+    participant.claimedBy = holderId;
+    participant.claimedAt = new Date();
+    if (displayName !== undefined) participant.displayName = displayName;
+    await this.gameSessionsRepository.getEntityManager().flush();
+
+    return participant;
+  }
+
+  public async updateSeat(
+    participant: GameParticipant,
+    displayName?: Nullable<string>,
+  ): Promise<GameParticipant> {
+    if (displayName !== undefined) participant.displayName = displayName;
+    await this.gameSessionsRepository.getEntityManager().flush();
+
+    return participant;
+  }
+
+  public async syncBalances(
+    session: GameSession,
+    balances: ReadonlyMap<string, number>,
+  ): Promise<void> {
+    for (const participant of session.participants.getItems()) {
+      const balance = balances.get(participant.uuid);
+      if (balance !== undefined) participant.balance = balance;
+    }
+    session.lastActivityAt = new Date();
+    await this.gameSessionsRepository.getEntityManager().flush();
+  }
+
+  public async touch(session: GameSession): Promise<void> {
+    session.lastActivityAt = new Date();
+    await this.gameSessionsRepository.getEntityManager().flush();
+  }
+
+  public async setStatus(
+    session: GameSession,
+    status: GameSessionStatus,
+  ): Promise<GameSession> {
+    session.status = status;
+    session.lastActivityAt = new Date();
+    await this.gameSessionsRepository.getEntityManager().flush();
+
+    return session;
+  }
+
+  public async close(
+    session: GameSession,
+    status: GameSessionStatus = GameSessionStatus.Finished,
+  ): Promise<GameSession> {
+    session.status = status;
+    session.closedAt = new Date();
+    session.lastActivityAt = new Date();
+    await this.gameSessionsRepository.getEntityManager().flush();
+
+    return session;
+  }
+}

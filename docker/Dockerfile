@@ -2,6 +2,8 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache git
+
 COPY package*.json ./
 RUN npm ci
 
@@ -27,6 +29,7 @@ CMD ["npx", "mikro-orm", "migration:up"]
 FROM node:24-alpine AS runner
 
 ENV NODE_ENV=production
+ENV PORT=3000
 
 WORKDIR /app
 
@@ -39,6 +42,6 @@ RUN npm prune --omit=dev
 RUN addgroup -S tokenizer && adduser -S tokenizer -G tokenizer
 USER tokenizer
 
-EXPOSE 3000
+EXPOSE ${PORT}
 
 CMD ["npm", "run", "start:prod"]

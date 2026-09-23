@@ -7,7 +7,9 @@ import { TOKEN_TTL_MS as PASSWORD_RESET_TOKEN_TTL_MS } from '@modules/password-r
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 
-@Processor(Constants.MAIL_QUEUE)
+@Processor(Constants.MAIL_QUEUE, {
+  concurrency: Constants.WORKER_CONCURRENCY,
+})
 export class MailConsumer extends WorkerHost {
   private readonly logger = new Logger(MailConsumer.name);
 

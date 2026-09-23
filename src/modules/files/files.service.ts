@@ -15,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { FileStatus, FileUploadMode } from '@tokenizer/shared/types';
 import { createHash } from 'node:crypto';
-import type { Readable } from 'node:stream';
 import sharp from 'sharp';
 // Loads the `Express.Multer` global augmentation shipped by @types/multer.
 import 'multer';
@@ -44,7 +43,6 @@ export class FilesService {
 
     const file = this.filesRepository.create({
       uuid,
-      // Keyed by uuid so two uploads of the same filename never collide.
       bucketKey: `files/${uuid}`,
       bucketName: bucket.name,
       originalFilename: upload.originalname,
@@ -55,8 +53,6 @@ export class FilesService {
       createdBy,
     });
 
-    // Persisted before the upload so a crash mid-transfer leaves a Pending row
-    // instead of an untracked object in the bucket.
     await em.flush();
 
     if (mode === FileUploadMode.Async) {
@@ -71,7 +67,6 @@ export class FilesService {
     try {
       await this.uploadContent(file, upload.buffer);
     } catch (error) {
-      // An undecodable image is the client's fault, not a storage failure.
       if (error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to store file content');
     }
@@ -79,10 +74,6 @@ export class FilesService {
     return file;
   }
 
-  /**
-   * Uploads the content to the bucket and tracks the status transitions.
-   * Rethrows the upload error so queue workers can let the job fail.
-   */
   public async uploadContent(file: File, content: Buffer): Promise<void> {
     const em = this.filesRepository.getEntityManager();
 
@@ -92,18 +83,16 @@ export class FilesService {
     try {
       const processed = await this.process(file, content);
 
-      // The stored bytes differ from the upload, so the recorded size and
-      // checksum must describe what the bucket actually holds (they drive the
-      // Content-Length and ETag of the content route).
-      file.sizeBytes = processed.length;
+      file.sizeBytes = processed.content.length;
       file.checksumSha256 = createHash('sha256')
-        .update(processed)
+        .update(processed.content)
         .digest('hex');
+      file.mimeType = processed.mimeType;
 
       await this.firebaseService
         .bucket(file.bucketName)
         .file(file.bucketKey)
-        .save(processed, {
+        .save(processed.content, {
           contentType: file.mimeType,
           resumable: false,
         });
@@ -120,32 +109,32 @@ export class FilesService {
     }
   }
 
-  /**
-   * Re-encodes the image before it reaches the bucket, so anything that is not
-   * pixel data (EXIF, embedded payloads) never gets stored. Encoding to the
-   * declared mime type also keeps the served Content-Type truthful.
-   */
-  protected async process(file: File, content: Buffer): Promise<Buffer> {
-    // EXIF is discarded by the re-encoding, so the orientation it carries
-    // must be baked into the pixels first.
-    const image = sharp(content).rotate();
-
-    let encoded: sharp.Sharp;
+  protected async process(
+    file: File,
+    content: Buffer,
+  ): Promise<Types.ProcessedFile> {
     switch (file.mimeType) {
       case 'image/png':
-        encoded = image.png();
-        break;
       case 'image/jpeg':
-        encoded = image.jpeg();
-        break;
+      case 'image/webp':
+      case 'image/gif':
+        return this.encodeWebp(content);
       default:
-        throw new Error(`Unsupported mime type "${file.mimeType}"`);
+        return { content, mimeType: file.mimeType };
     }
+  }
+
+  private async encodeWebp(content: Buffer): Promise<Types.ProcessedFile> {
+    const encoded = sharp(content)
+      .rotate()
+      .webp({ quality: Constants.WEBP_QUALITY });
 
     try {
-      return await encoded.toBuffer();
+      return {
+        content: await encoded.toBuffer(),
+        mimeType: 'image/webp',
+      };
     } catch (error) {
-      // The content passed the magic number check but cannot be decoded.
       throw new BadRequestException('Invalid image content', { cause: error });
     }
   }
@@ -162,10 +151,19 @@ export class FilesService {
     return file;
   }
 
-  public getContentStream(file: File): Readable {
-    return this.firebaseService
+  public async buildSignedUrl(
+    file: File,
+    options: Partial<Types.SignedUrlOptions> = {},
+  ): Promise<string> {
+    const [url] = await this.firebaseService
       .bucket(file.bucketName)
       .file(file.bucketKey)
-      .createReadStream();
+      .getSignedUrl({
+        expires: Date.now() + Constants.SIGNED_URL_TTL_MS,
+        ...options,
+        action: 'read',
+      });
+
+    return url;
   }
 }

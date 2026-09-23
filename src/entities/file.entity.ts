@@ -55,13 +55,12 @@ export class File {
     type: 'varchar',
     nullable: false,
   })
-  readonly mimeType!: string;
+  mimeType!: string;
 
   @Property({
     type: 'int',
     nullable: false,
   })
-  // Not readonly: re-encoding before the bucket upload changes the size.
   sizeBytes!: number;
 
   @Property({
