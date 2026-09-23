@@ -8,6 +8,7 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { AccountConfirmationsService } from '@modules/account-confirmations/account-confirmations.service';
 import { FilesService } from '@modules/files/files.service';
 import { MailService } from '@modules/mail/mail.service';
+import { RedisCacheService } from '@modules/redis/services/redis-cache.service';
 import * as Constants from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
@@ -18,15 +19,13 @@ import { z } from 'zod';
 
 const HASH_ROUNDS = 10;
 
+function avatarUrlKey(fileUuid: string): string {
+  return `avatar_url:${fileUuid}`;
+}
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
-
-  /** Signed avatar URLs, by file uuid. See {@link buildAvatarUrl}. */
-  private readonly avatarUrls = new Map<
-    string,
-    { url: string; expiresAt: number }
-  >();
 
   constructor(
     @InjectRepository(User)
@@ -34,6 +33,7 @@ export class UsersService {
     private readonly mailService: MailService,
     private readonly accountConfirmationsService: AccountConfirmationsService,
     private readonly filesService: FilesService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   public async validateUser(
@@ -260,48 +260,45 @@ export class UsersService {
     return bcrypt.compareSync(password, hash);
   }
 
-  /**
-   * The absolute URL an `<img>` points at to show this user's avatar, or null
-   * when they have none.
-   *
-   * Memoised per file because signing is not deterministic: `expires` is
-   * stamped from the clock, so two calls a second apart hand back two different
-   * URLs for the same immutable bytes. That is invisible on a profile page and
-   * very visible at a game table, where the snapshot is rebroadcast on every
-   * action — a fresh `src` each time sends every avatar in the room back to its
-   * placeholder while the browser re-fetches an image it already has.
-   *
-   * Keyed by the file rather than by the user, so replacing an avatar (a new
-   * file row) invalidates the entry outright instead of leaving the old face up
-   * until an expiry.
-   */
   public async buildAvatarUrl(user: User): Promise<Nullable<string>> {
     if (!user.avatar) return null;
 
     const file = await user.avatar.load();
     if (!file) return null;
 
-    const cached = this.avatarUrls.get(file.uuid);
-    if (cached && cached.expiresAt > Date.now()) return cached.url;
+    const cached = await this.readAvatarUrl(file.uuid);
+    if (cached) return cached;
 
     const url = await this.filesService.buildSignedUrl(file);
-    this.rememberAvatarUrl(file.uuid, url);
 
-    return url;
+    return this.rememberAvatarUrl(file.uuid, url);
   }
 
-  private rememberAvatarUrl(fileUuid: string, url: string): void {
-    // A plain Map with a cap rather than a cache library: the working set is
-    // "people currently looking at each other", and evicting the oldest entry
-    // costs a re-sign, not a wrong answer.
-    if (this.avatarUrls.size >= Constants.AVATAR_URL_CACHE_SIZE) {
-      const oldest = this.avatarUrls.keys().next();
-      if (!oldest.done) this.avatarUrls.delete(oldest.value);
+  private async readAvatarUrl(fileUuid: string): Promise<Nullable<string>> {
+    try {
+      return await this.redisCacheService.client.get(avatarUrlKey(fileUuid));
+    } catch (error) {
+      this.logger.warn(`Avatar URL cache read failed: ${String(error)}`);
+      return null;
     }
+  }
 
-    this.avatarUrls.set(fileUuid, {
-      url,
-      expiresAt: Date.now() + Constants.AVATAR_URL_CACHE_TTL_MS,
-    });
+  private async rememberAvatarUrl(
+    fileUuid: string,
+    url: string,
+  ): Promise<string> {
+    try {
+      const claimed = await this.redisCacheService.client.set(
+        avatarUrlKey(fileUuid),
+        url,
+        { NX: true, PX: Constants.AVATAR_URL_CACHE_TTL_MS },
+      );
+      if (claimed) return url;
+
+      return (await this.readAvatarUrl(fileUuid)) ?? url;
+    } catch (error) {
+      this.logger.warn(`Avatar URL cache write failed: ${String(error)}`);
+      return url;
+    }
   }
 }

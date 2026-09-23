@@ -4,6 +4,7 @@ import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { AccountConfirmationsModule } from '@modules/account-confirmations/account-confirmations.module';
 import { FilesModule } from '@modules/files/files.module';
 import { MailModule } from '@modules/mail/mail.module';
+import { RedisModule } from '@modules/redis/redis.module';
 import { UsersController } from '@modules/users/users.controller';
 import { UsersService } from '@modules/users/users.service';
 import { Module } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { Module } from '@nestjs/common';
     FilesModule,
     MailModule,
     AccountConfirmationsModule,
+    RedisModule,
   ],
 })
 export class UsersModule {}
