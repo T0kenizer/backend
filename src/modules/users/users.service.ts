@@ -8,7 +8,7 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { AccountConfirmationsService } from '@modules/account-confirmations/account-confirmations.service';
 import { FilesService } from '@modules/files/files.service';
 import { MailService } from '@modules/mail/mail.service';
-import { BANNED_USERNAMES } from '@modules/users/users.constants';
+import * as Constants from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
@@ -21,6 +21,12 @@ const HASH_ROUNDS = 10;
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+
+  /** Signed avatar URLs, by file uuid. See {@link buildAvatarUrl}. */
+  private readonly avatarUrls = new Map<
+    string,
+    { url: string; expiresAt: number }
+  >();
 
   constructor(
     @InjectRepository(User)
@@ -109,7 +115,7 @@ export class UsersService {
     let candidate = base;
     let suffix = 1;
     while (
-      BANNED_USERNAMES.includes(candidate) ||
+      Constants.BANNED_USERNAMES.includes(candidate) ||
       (await this.usersRepository.findOne({ username: candidate }))
     ) {
       suffix += 1;
@@ -119,7 +125,7 @@ export class UsersService {
   }
 
   public async create(data: RequiredEntityData<User>): Promise<User> {
-    if (BANNED_USERNAMES.includes(data.username))
+    if (Constants.BANNED_USERNAMES.includes(data.username))
       throw new FieldBadRequestException({
         username: `Username "${data.username}" is not allowed`,
       });
@@ -254,12 +260,48 @@ export class UsersService {
     return bcrypt.compareSync(password, hash);
   }
 
+  /**
+   * The absolute URL an `<img>` points at to show this user's avatar, or null
+   * when they have none.
+   *
+   * Memoised per file because signing is not deterministic: `expires` is
+   * stamped from the clock, so two calls a second apart hand back two different
+   * URLs for the same immutable bytes. That is invisible on a profile page and
+   * very visible at a game table, where the snapshot is rebroadcast on every
+   * action — a fresh `src` each time sends every avatar in the room back to its
+   * placeholder while the browser re-fetches an image it already has.
+   *
+   * Keyed by the file rather than by the user, so replacing an avatar (a new
+   * file row) invalidates the entry outright instead of leaving the old face up
+   * until an expiry.
+   */
   public async buildAvatarUrl(user: User): Promise<Nullable<string>> {
     if (!user.avatar) return null;
 
     const file = await user.avatar.load();
     if (!file) return null;
 
-    return this.filesService.buildSignedUrl(file);
+    const cached = this.avatarUrls.get(file.uuid);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+    const url = await this.filesService.buildSignedUrl(file);
+    this.rememberAvatarUrl(file.uuid, url);
+
+    return url;
+  }
+
+  private rememberAvatarUrl(fileUuid: string, url: string): void {
+    // A plain Map with a cap rather than a cache library: the working set is
+    // "people currently looking at each other", and evicting the oldest entry
+    // costs a re-sign, not a wrong answer.
+    if (this.avatarUrls.size >= Constants.AVATAR_URL_CACHE_SIZE) {
+      const oldest = this.avatarUrls.keys().next();
+      if (!oldest.done) this.avatarUrls.delete(oldest.value);
+    }
+
+    this.avatarUrls.set(fileUuid, {
+      url,
+      expiresAt: Date.now() + Constants.AVATAR_URL_CACHE_TTL_MS,
+    });
   }
 }

@@ -46,6 +46,18 @@ export const PLAYER_DISCONNECT_GRACE_MS = 15 * 1000;
  */
 export const ROOM_EMPTY_GRACE_MS = 5 * 60 * 1000;
 
+/**
+ * How long a table that has just ended is held open after the host closed it.
+ *
+ * The room is not torn down on the click: the table has to be _told_ it is
+ * over, and a socket taken away mid-broadcast tells nobody anything. So the
+ * final snapshot goes out, every client switches to the recap and leaves on its
+ * own, and the room dies with the last of them. This is only the backstop for
+ * the ones that never do — a tab left open on a locked phone — so it is
+ * generous rather than tight: nothing is waiting on it.
+ */
+export const CLOSED_ROOM_GRACE_MS = 2 * 60 * 1000;
+
 /** BullMQ queue carrying every deferred lifecycle decision. */
 export const GAME_LIFECYCLE_QUEUE = 'game-lifecycle';
 

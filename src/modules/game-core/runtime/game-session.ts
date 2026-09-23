@@ -5,30 +5,39 @@ import type {
   UpdateSeatParams,
 } from '@modules/game-core/game-core.types';
 import { Participant } from '@modules/game-core/runtime/participant';
-import { Round } from '@modules/game-core/runtime/round';
 import { BadRequestException } from '@nestjs/common';
 import {
   GameSessionStatus,
   ParticipantRole,
-  ParticipantStatus,
-  RoundStatus,
   type GameConfig,
 } from '@tokenizer/shared/types';
 
-export class GameSession {
+/**
+ * A table, minus the game played at it.
+ *
+ * Everything here is true of any mode: seats are declared up front, a seat is
+ * claimed by exactly one identity, the host may open another chair once the
+ * table is full, and host authority rides on the seat rather than on whoever
+ * holds it. None of it depends on whether the next deal is a poker hand or a
+ * free round — which is precisely why it lives one level above both.
+ *
+ * What a mode adds is the deal itself: {@link PokerSession} deals hands and
+ * moves a button; {@link FreeSession} opens rounds and applies the forced bets
+ * the host declared. The three members below are the whole of the seam.
+ */
+export abstract class GameSession<TConfig extends GameConfig = GameConfig> {
   readonly id: string;
   status: GameSessionStatus;
   /** Immutable once the session is created */
-  readonly config: GameConfig;
+  readonly config: TConfig;
   /**
    * The session creator's identity: a companion, not a seated player. Holds
-   * host permissions (start/resolve/close, proxying unclaimed seats) regardless
-   * of whether they ever claim a seat themselves.
+   * host permissions (deal/close, proxying unclaimed seats) regardless of
+   * whether they ever claim a seat themselves.
    */
   readonly ownerUuid: string;
   /** Every seat of the session, keyed by participant id. */
   readonly participants: Map<string, Participant>;
-  currentRound?: Round;
 
   /**
    * Seats are declared up front: the aggregate is always built from the full
@@ -36,7 +45,7 @@ export class GameSession {
    */
   constructor(
     id: string,
-    config: GameConfig,
+    config: TConfig,
     ownerUuid: string,
     seats: SeatInit[],
   ) {
@@ -49,6 +58,26 @@ export class GameSession {
     );
   }
 
+  /** Whether a deal is being played right now. */
+  abstract get dealInProgress(): boolean;
+
+  /**
+   * How many deals the table has got through. Each mode counts its own — hands
+   * at a poker table, rounds at a free one — and the recap at the end reads
+   * them the same way, because "how long did we play" is the same question.
+   */
+  abstract get dealsPlayed(): number;
+
+  /**
+   * What this mode calls a deal, singular — "hand" at a poker table, "round" at
+   * a free one. Only ever used to word a refusal, so a player is told to wait
+   * for the end of the thing they are actually watching.
+   */
+  protected abstract get dealNoun(): string;
+
+  /** Settles whatever is open and stamps the session finished. */
+  abstract closeSession(): void;
+
   /** Every seat, ordered by seat index. */
   get seats(): Participant[] {
     return [...this.participants.values()].sort(
@@ -59,7 +88,7 @@ export class GameSession {
   /**
    * Occupies a seat. Idempotent for an external identity that already holds one
    * (reconnects). Free seats can be claimed until the session finishes —
-   * between rounds included — unless the config locks them once the game has
+   * between deals included — unless the config locks them once the game has
    * started (`seating.allowMidGameClaims: false`).
    */
   claimSeat(params: ClaimParams): Participant {
@@ -96,8 +125,8 @@ export class GameSession {
       }
     } else {
       // Never hand out the host seat by default: it carries the authority to
-      // start, resolve and close the game, and it belongs to whoever created
-      // it. Taking it has to be deliberate.
+      // deal and close the game, and it belongs to whoever created it. Taking
+      // it has to be deliberate.
       seat = seats.find((p) => !p.claimed && p.role !== ParticipantRole.Host);
       if (!seat) {
         throw new BadRequestException('No free seat left');
@@ -118,9 +147,8 @@ export class GameSession {
    * - Every declared seat is already claimed, because an empty chair is the
    *   answer to "someone else wants to play" — opening a tenth seat while the
    *   ninth sits free just adds chips nobody is holding;
-   * - No round is under way, because a seat added mid-round would join a rotation
-   *   that has already passed it, and the forced bets it never posted would be
-   *   missing from the pot.
+   * - No deal is under way, because a seat dealt in halfway through owes what it
+   *   never posted and sits in a rotation that has already passed it.
    *
    * The plan cap is deliberately _not_ checked here: the runtime does not know
    * who owns the session, let alone what they pay. `GameRoomsService` applies
@@ -129,12 +157,7 @@ export class GameSession {
   get canAddSeat(): boolean {
     if (!this.config.seating.allowExtraSeats) return false;
     if (this.status === GameSessionStatus.Finished) return false;
-    if (
-      this.currentRound &&
-      this.currentRound.status !== RoundStatus.Resolved
-    ) {
-      return false;
-    }
+    if (this.dealInProgress) return false;
     return this.seats.every((seat) => seat.claimed);
   }
 
@@ -148,12 +171,9 @@ export class GameSession {
     if (this.status === GameSessionStatus.Finished) {
       throw new BadRequestException('Session is finished');
     }
-    if (
-      this.currentRound &&
-      this.currentRound.status !== RoundStatus.Resolved
-    ) {
+    if (this.dealInProgress) {
       throw new BadRequestException(
-        'A seat can only be added between rounds, not during one',
+        `A seat can only be added between ${this.dealNoun}s, not during one`,
       );
     }
     if (this.seats.some((seat) => !seat.claimed)) {
@@ -168,7 +188,7 @@ export class GameSession {
    *
    * The new chair lands after the last one and starts unclaimed, exactly like a
    * declared seat that nobody has taken: `WAITING`, no controller, and the
-   * host's to play until someone claims it. It is dealt in from the next round,
+   * host's to play until someone claims it. It is dealt in from the next deal,
    * never the current one — see {@link canAddSeat}.
    */
   addSeat(params: AddSeatParams): Participant {
@@ -216,11 +236,11 @@ export class GameSession {
   }
 
   /**
-   * Resolves which seat an action/resolution acts on. With no target, it is the
-   * caller's own seat — identified by the participant id their token carries,
-   * so it cannot be another's. The host may instead target an unclaimed seat
-   * and act on its behalf (a companion noting a table player's move); every
-   * declared seat plays from round one, claimed or not.
+   * Resolves which seat an action acts on. With no target, it is the caller's
+   * own seat — identified by the participant id their token carries, so it
+   * cannot be another's. The host may instead target an unclaimed seat and act
+   * on its behalf (a companion noting a table player's move); every declared
+   * seat is dealt in from the first deal, claimed or not.
    */
   resolveActingParticipant(
     callerParticipantId: string,
@@ -245,53 +265,17 @@ export class GameSession {
     return seat;
   }
 
-  startRound(): Round {
+  /** A session that is over deals nothing more. */
+  protected assertNotFinished(): void {
     if (this.status === GameSessionStatus.Finished) {
       throw new BadRequestException('Session is already finished');
     }
-    if (
-      this.currentRound !== undefined &&
-      (this.currentRound.status === RoundStatus.Init ||
-        this.currentRound.status === RoundStatus.InProgress)
-    ) {
-      throw new BadRequestException(
-        'Resolve the current round before starting a new one',
-      );
-    }
+  }
 
-    // Every declared seat is a real chair at the table — claimed or not, the
-    // host notes moves for whoever hasn't claimed theirs yet. Only
-    // eliminated seats stay out.
-    const contenders = this.seats.filter(
-      (p) => p.status !== ParticipantStatus.Eliminated,
-    );
-    if (contenders.length < 2) {
-      throw new BadRequestException(
-        'At least 2 non-eliminated seats are required',
-      );
-    }
-
+  /** Moves the session out of the lobby the first time a deal opens. */
+  protected startPlaying(): void {
     if (this.status === GameSessionStatus.Lobby) {
       this.status = GameSessionStatus.Running;
     }
-
-    // Reset per-round state — FOLDED/WAITING revert to ACTIVE; ELIMINATED stays out
-    for (const p of contenders) {
-      if (
-        p.status === ParticipantStatus.Folded ||
-        p.status === ParticipantStatus.Waiting
-      ) {
-        p.status = ParticipantStatus.Active;
-      }
-    }
-
-    const round = new Round(this.config, contenders);
-    this.currentRound = round;
-    return round;
-  }
-
-  closeSession(): void {
-    this.currentRound?.resolve();
-    this.status = GameSessionStatus.Finished;
   }
 }

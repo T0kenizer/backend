@@ -4,9 +4,9 @@ import type { MikroORM } from '@mikro-orm/core';
 import type { ConfigService } from '@modules/config/config.service';
 import type { GameCodesService } from '@modules/game-core/game-codes.service';
 import type { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
+import { defaultConfigFor } from '@modules/game-core/game-modes';
 import type { GamePresenceService } from '@modules/game-core/game-presence.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
-import { defaultGameConfig } from '@modules/game-core/game-runtime.presets';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import type { GameSessionsService } from '@modules/game-core/game-sessions.service';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
+  GameMode,
   GameSessionStatus,
   ParticipantRole,
   Plan,
@@ -66,8 +67,8 @@ function persistedSession(
     status: GameSessionStatus.Lobby,
     closedAt: null as Nullable<Date>,
     lastActivityAt: new Date(),
-    config: defaultGameConfig(),
-    owner: { uuid: OWNER_UUID },
+    config: defaultConfigFor(GameMode.Poker),
+    owner: { uuid: OWNER_UUID, plan: Plan.Free },
     participants: { getItems: () => rows },
     ...overrides,
   };
@@ -96,6 +97,7 @@ describe('GameRoomsService', () => {
     setStatus: jest.Mock;
     close: jest.Mock;
     findStale: jest.Mock;
+    addParticipant: jest.Mock;
   };
   let users: { getUserByUuid: jest.Mock; findUserByUuid: jest.Mock };
   let codes: {
@@ -114,6 +116,8 @@ describe('GameRoomsService', () => {
   let lifecycle: {
     scheduleRoomClosure: jest.Mock;
     cancelRoomClosure: jest.Mock;
+    scheduleRoomTeardown: jest.Mock;
+    cancelRoomTeardown: jest.Mock;
     schedulePlayerDeparture: jest.Mock;
     cancelPlayerDeparture: jest.Mock;
   };
@@ -147,6 +151,29 @@ describe('GameRoomsService', () => {
           return Promise.resolve(s);
         }),
       findStale: jest.fn().mockResolvedValue([]),
+      addParticipant: jest
+        .fn()
+        .mockImplementation(
+          (
+            _session: GameSession,
+            seatIndex: number,
+            displayName: string,
+            initialBalance: number,
+          ) => {
+            const row = {
+              uuid: crypto.randomUUID(),
+              seatIndex,
+              role: ParticipantRole.Player,
+              displayName,
+              initialBalance,
+              balance: initialBalance,
+              claimedBy: null,
+              claimedAt: null,
+            } as unknown as GameParticipant;
+            rows.push(row);
+            return Promise.resolve(row);
+          },
+        ),
     };
     users = {
       getUserByUuid: jest.fn().mockResolvedValue({
@@ -174,6 +201,8 @@ describe('GameRoomsService', () => {
     lifecycle = {
       scheduleRoomClosure: jest.fn().mockResolvedValue(undefined),
       cancelRoomClosure: jest.fn().mockResolvedValue(undefined),
+      scheduleRoomTeardown: jest.fn().mockResolvedValue(undefined),
+      cancelRoomTeardown: jest.fn().mockResolvedValue(undefined),
       schedulePlayerDeparture: jest.fn().mockResolvedValue(undefined),
       cancelPlayerDeparture: jest.fn().mockResolvedValue(undefined),
     };
@@ -196,7 +225,9 @@ describe('GameRoomsService', () => {
 
   describe('createGame', () => {
     it('mints a code, seats the owner in the HOST seat and issues their token', async () => {
-      const result = await service.createGame(OWNER_UUID);
+      const result = await service.createGame(OWNER_UUID, {
+        mode: GameMode.Poker,
+      });
 
       expect(codes.issue).toHaveBeenCalledWith(GAME_UUID);
       expect(result.snapshot.joinCode).toBe(JOIN_CODE);
@@ -212,14 +243,14 @@ describe('GameRoomsService', () => {
     });
 
     it('refuses to create a game for anything but a real user uuid', async () => {
-      await expect(service.createGame('not-a-uuid')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.createGame('not-a-uuid', { mode: GameMode.Poker }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     describe('plan limits', () => {
       const configWithSeats = (count: number): GameConfig => {
-        const config = defaultGameConfig();
+        const config = defaultConfigFor(GameMode.Poker);
         return {
           ...config,
           seating: {
@@ -231,14 +262,22 @@ describe('GameRoomsService', () => {
         };
       };
 
-      it('rejects a free user submitting a custom config', async () => {
+      // How configurable a table is belongs to the mode, not to the plan: a
+      // host who may open the game may set it up. What the plan still caps is
+      // how many chairs are round it, which is the assertion below.
+      it('lets a free user set up the mode they are allowed to open', async () => {
         await expect(
-          service.createGame(OWNER_UUID, defaultGameConfig()),
-        ).rejects.toThrow(ForbiddenException);
+          service.createGame(OWNER_UUID, {
+            mode: GameMode.Poker,
+            config: defaultConfigFor(GameMode.Poker),
+          }),
+        ).resolves.toBeDefined();
       });
 
-      it('lets a free user create a game by omitting config (the preset)', async () => {
-        await expect(service.createGame(OWNER_UUID)).resolves.toBeDefined();
+      it('lets a free user open the mode on its own defaults', async () => {
+        await expect(
+          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
+        ).resolves.toBeDefined();
       });
 
       it('lets a premium user submit a custom config within their seat cap', async () => {
@@ -251,7 +290,10 @@ describe('GameRoomsService', () => {
         });
 
         await expect(
-          service.createGame(OWNER_UUID, configWithSeats(12)),
+          service.createGame(OWNER_UUID, {
+            mode: GameMode.Poker,
+            config: configWithSeats(12),
+          }),
         ).resolves.toBeDefined();
       });
 
@@ -265,27 +307,69 @@ describe('GameRoomsService', () => {
         });
 
         await expect(
-          service.createGame(OWNER_UUID, configWithSeats(13)),
+          service.createGame(OWNER_UUID, {
+            mode: GameMode.Poker,
+            config: configWithSeats(13),
+          }),
         ).rejects.toThrow(ForbiddenException);
       });
     });
 
-    describe('templates', () => {
-      it('lets a free user open a game from a known template', async () => {
+    describe('modes', () => {
+      it('lets a free user open a table in a mode their plan includes', async () => {
         await expect(
-          service.createGame(OWNER_UUID, undefined, undefined, 'simple-poker'),
+          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
         ).resolves.toBeDefined();
       });
 
-      it('rejects an unknown template id', async () => {
+      it('rejects a mode the plan does not include', async () => {
+        users.getUserByUuid.mockResolvedValueOnce({
+          uuid: OWNER_UUID,
+          username: 'owner',
+          displayName: 'Owner',
+          avatar: null,
+          plan: Plan.Anonymous,
+        });
+
         await expect(
-          service.createGame(
-            OWNER_UUID,
-            undefined,
-            undefined,
-            'not-a-template',
-          ),
-        ).rejects.toThrow(NotFoundException);
+          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses the free table to a plan that does not pay for it', async () => {
+        await expect(
+          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('opens the free table for a plan that does', async () => {
+        users.getUserByUuid.mockResolvedValueOnce({
+          uuid: OWNER_UUID,
+          username: 'owner',
+          displayName: 'Owner',
+          avatar: null,
+          plan: Plan.Premium,
+        });
+
+        await expect(
+          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+        ).resolves.toBeDefined();
+      });
+
+      it('answers what a host may open a table in, poker first', () => {
+        expect(service.listModes().map((entry) => entry.mode)).toEqual([
+          GameMode.Poker,
+          GameMode.Free,
+        ]);
+      });
+
+      it('says out loud which of the modes is still an experiment', () => {
+        const experimental = service
+          .listModes()
+          .filter((entry) => entry.experimental)
+          .map((entry) => entry.mode);
+
+        expect(experimental).toEqual([GameMode.Free]);
       });
     });
 
@@ -295,47 +379,29 @@ describe('GameRoomsService', () => {
           displayName: `Seat ${index + 1}`,
         }));
 
-      it("lets a free user override a template's seat count, within their cap", async () => {
+      it("lets a free user override the mode's seat count, within their cap", async () => {
         await expect(
-          service.createGame(
-            OWNER_UUID,
-            undefined,
-            undefined,
-            'simple-poker',
-            seatsOf(2),
-          ),
+          service.createGame(OWNER_UUID, {
+            mode: GameMode.Poker,
+            seats: seatsOf(2),
+          }),
         ).resolves.toBeDefined();
       });
 
-      it("rejects a free user overriding a template's seats beyond their cap", async () => {
+      it('rejects a free user overriding the seats beyond their cap', async () => {
         await expect(
-          service.createGame(
-            OWNER_UUID,
-            undefined,
-            undefined,
-            'simple-poker',
-            seatsOf(5),
-          ),
+          service.createGame(OWNER_UUID, {
+            mode: GameMode.Poker,
+            seats: seatsOf(5),
+          }),
         ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('overrides the default preset when no template is given either', async () => {
-        await expect(
-          service.createGame(
-            OWNER_UUID,
-            undefined,
-            undefined,
-            undefined,
-            seatsOf(3),
-          ),
-        ).resolves.toBeDefined();
       });
     });
   });
 
   describe('joinGame', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID);
+      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
     });
 
     it('seats a guest, issues a token, and never puts them in the host seat', async () => {
@@ -392,6 +458,76 @@ describe('GameRoomsService', () => {
         BadRequestException,
       );
     });
+
+    describe('pulling up a chair at a full table', () => {
+      /** Fills every declared seat, which is what `canAddSeat` asks for. */
+      const fillTheTable = async () => {
+        for (let seat = 1; seat < rows.length; seat++) {
+          await service.joinGame(GAME_UUID, { seatIndex: seat });
+        }
+      };
+
+      /** Four declared seats against a four-seat cap can never grow. */
+      const withRoomToGrow = () => {
+        (session.owner as { plan: Plan }).plan = Plan.Premium;
+      };
+
+      it('opens a seat and sits the newcomer in it, in one call', async () => {
+        withRoomToGrow();
+        await fillTheTable();
+
+        const result = await service.joinGame(GAME_UUID, {
+          displayName: 'Late',
+          openExtraSeat: true,
+        });
+
+        const seats = result.snapshot.participants;
+        expect(seats).toHaveLength(5);
+        // The chair it opened is the chair it sat in: a table never grows a
+        // seat that nobody is holding.
+        const late = seats.find((p) => p.id === result.participantId);
+        expect(late?.seatIndex).toBe(4);
+        expect(late?.claimed).toBe(true);
+        expect(late?.displayName).toBe('Late');
+        expect(seats.every((p) => p.claimed)).toBe(true);
+      });
+
+      it('refuses while a free chair is still going', async () => {
+        withRoomToGrow();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(/free seat/i);
+        expect(gameSessions.addParticipant).not.toHaveBeenCalled();
+      });
+
+      it("refuses past the owner's plan cap", async () => {
+        // Four declared seats on a plan that stops at four: full is as big as
+        // this table gets, whoever turns up.
+        await fillTheTable();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(gameSessions.addParticipant).not.toHaveBeenCalled();
+      });
+
+      it('refuses at a table whose size the host fixed', async () => {
+        withRoomToGrow();
+        const config = defaultConfigFor(GameMode.Poker);
+        session.config = {
+          ...config,
+          seating: { ...config.seating, allowExtraSeats: false },
+        };
+        runtime.disposeSession(GAME_UUID);
+        await service.ensureRoomOpen(GAME_UUID);
+        await fillTheTable();
+
+        await expect(
+          service.joinGame(GAME_UUID, { openExtraSeat: true }),
+        ).rejects.toThrow(/fixed number of seats/i);
+      });
+    });
   });
 
   describe('host-only transitions', () => {
@@ -400,25 +536,29 @@ describe('GameRoomsService', () => {
     let playerSeat: string;
 
     beforeEach(async () => {
-      const host = await service.createGame(OWNER_UUID);
+      const host = await service.createGame(OWNER_UUID, {
+        mode: GameMode.Poker,
+      });
       hostToken = host.token;
       hostSeat = host.participantId;
       playerSeat = (await service.joinGame(GAME_UUID, { displayName: 'Bob' }))
         .participantId;
     });
 
-    it('lets the HOST seat start a round', async () => {
-      const snapshot = await service.startRound(GAME_UUID, hostSeat);
+    it('lets the HOST seat deal a hand', async () => {
+      const { snapshot } = await service.startHand(GAME_UUID, hostSeat);
 
-      expect(snapshot.currentRound).not.toBeNull();
+      expect(
+        snapshot.mode === GameMode.Poker ? snapshot.currentHand : null,
+      ).not.toBeNull();
       expect(gameSessions.setStatus).toHaveBeenCalledWith(
         session,
         GameSessionStatus.Running,
       );
     });
 
-    it('refuses a player seat starting a round', async () => {
-      await expect(service.startRound(GAME_UUID, playerSeat)).rejects.toThrow(
+    it('refuses a player seat dealing a hand', async () => {
+      await expect(service.startHand(GAME_UUID, playerSeat)).rejects.toThrow(
         ForbiddenException,
       );
     });
@@ -430,7 +570,7 @@ describe('GameRoomsService', () => {
       expect(gameSessions.close).not.toHaveBeenCalled();
     });
 
-    it('settles balances, retires the code and drops the sockets on close', async () => {
+    it('settles balances and retires the code on close', async () => {
       await service.closeGame(GAME_UUID, hostSeat);
 
       expect(gameSessions.syncBalances).toHaveBeenCalled();
@@ -439,19 +579,59 @@ describe('GameRoomsService', () => {
         GameSessionStatus.Finished,
       );
       expect(codes.revoke).toHaveBeenCalledWith(GAME_UUID);
-      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
-      expect(runtime.hasSession(GAME_UUID)).toBe(false);
       // hostToken is now worth nothing: the session refuses to re-open.
       expect(tokens.verify(hostToken, GAME_UUID)).toBeDefined();
       await expect(service.ensureRoomOpen(GAME_UUID)).rejects.toThrow(
         BadRequestException,
       );
     });
+
+    it('keeps the room up so the table can be told it is over', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+
+      // The caller broadcasts the final snapshot into this very room; dropping
+      // the sockets here would empty it before the message went out.
+      expect(presence.closeRoom).not.toHaveBeenCalled();
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+      expect(lifecycle.scheduleRoomTeardown).toHaveBeenCalledWith(GAME_UUID);
+    });
+
+    it('reclaims the room when the last viewer closes the recap', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+      presence.isRoomEmpty.mockReturnValue(true);
+
+      await service.onPlayerDisconnected(GAME_UUID, hostSeat);
+
+      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
+      // Nothing to abandon and nobody to tell: the table is already over.
+      expect(lifecycle.scheduleRoomClosure).not.toHaveBeenCalled();
+      expect(lifecycle.schedulePlayerDeparture).not.toHaveBeenCalled();
+    });
+
+    it('holds the recap open while somebody is still reading it', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+      presence.isRoomEmpty.mockReturnValue(false);
+
+      await service.onPlayerDisconnected(GAME_UUID, hostSeat);
+
+      expect(presence.closeRoom).not.toHaveBeenCalled();
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+    });
+
+    it('reclaims the room from the backstop when nobody ever leaves', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+
+      await service.teardownClosedRoom(GAME_UUID);
+
+      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
+    });
   });
 
   describe('connection lifecycle', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID);
+      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
     });
 
     it('starts both clocks when the last socket of a room drops', async () => {
@@ -501,7 +681,7 @@ describe('GameRoomsService', () => {
 
   describe('abandonGame', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID);
+      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
     });
 
     it('marks the session abandoned and tears the room down', async () => {
@@ -576,6 +756,7 @@ describe('GameRoomsService', () => {
 
       expect(view).toEqual({
         name: "Owner's game",
+        mode: GameMode.Poker,
         status: GameSessionStatus.Lobby,
         playerCount: 1,
         seatCount: 4,
@@ -586,7 +767,9 @@ describe('GameRoomsService', () => {
 
   describe('snapshots', () => {
     it('never carries the identity holding a seat', async () => {
-      const { snapshot } = await service.createGame(OWNER_UUID);
+      const { snapshot } = await service.createGame(OWNER_UUID, {
+        mode: GameMode.Poker,
+      });
 
       // A snapshot reaches every socket in the room. Before player tokens, it
       // carried each seat's externalId — a signed-in player's user uuid — and
@@ -599,8 +782,10 @@ describe('GameRoomsService', () => {
     });
 
     it('marks who is connected without touching who holds the seat', async () => {
-      const { snapshot: before, participantId } =
-        await service.createGame(OWNER_UUID);
+      const { snapshot: before, participantId } = await service.createGame(
+        OWNER_UUID,
+        { mode: GameMode.Poker },
+      );
       expect(
         before.participants.find((p) => p.id === participantId)?.connected,
       ).toBe(false);

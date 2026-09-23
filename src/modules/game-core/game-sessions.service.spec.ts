@@ -1,10 +1,10 @@
 import type { GameSession } from '@entities/game/game-session.entity';
 import type { User } from '@entities/user.entity';
 import type { EntityRepository } from '@mikro-orm/core';
-import { defaultGameConfig } from '@modules/game-core/game-runtime.presets';
+import { defaultConfigFor } from '@modules/game-core/game-modes';
 import { GameSessionsService } from '@modules/game-core/game-sessions.service';
 import { NotFoundException } from '@nestjs/common';
-import { ParticipantRole } from '@tokenizer/shared/types';
+import { GameMode, ParticipantRole } from '@tokenizer/shared/types';
 
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
 const OWNER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -34,7 +34,7 @@ describe('GameSessionsService', () => {
 
     const { session, participants } = await service.create(
       owner,
-      defaultGameConfig(),
+      defaultConfigFor(GameMode.Poker),
     );
 
     expect(session.owner).toBe(owner);
@@ -63,7 +63,10 @@ describe('GameSessionsService', () => {
 
   it('stamps a seat when it is claimed', async () => {
     const owner = { uuid: OWNER_UUID, username: 'owner' } as User;
-    const { participants } = await service.create(owner, defaultGameConfig());
+    const { participants } = await service.create(
+      owner,
+      defaultConfigFor(GameMode.Poker),
+    );
 
     const claimed = await service.claim(participants[1], 'bob', 'Bob');
 
@@ -75,7 +78,10 @@ describe('GameSessionsService', () => {
 
   it('claiming without a displayName leaves the override unset', async () => {
     const owner = { uuid: OWNER_UUID, username: 'owner' } as User;
-    const { participants } = await service.create(owner, defaultGameConfig());
+    const { participants } = await service.create(
+      owner,
+      defaultConfigFor(GameMode.Poker),
+    );
 
     const claimed = await service.claim(participants[1], 'bob');
 

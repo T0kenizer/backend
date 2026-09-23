@@ -52,23 +52,18 @@ export class GameRuntimeController {
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.CreateGameSessionResponse)
   public create(@Body() data: DTOs.CreateGameSessionData, @Req() req: Request) {
-    return this.rooms.createGame(
-      req.user!.uuid,
-      data.config,
-      data.name,
-      data.templateId,
-      data.seats,
-    );
+    return this.rooms.createGame(req.user!.uuid, data);
   }
 
   /**
-   * The templates a host may open a game from. Public — browsing them takes no
-   * more trust than seeing a pricing page — so it works before sign-in too.
+   * The games a host may open a table in, with the parameters each one starts
+   * from. Public — browsing them takes no more trust than seeing a pricing page
+   * — so it works before sign-in too.
    */
-  @Get('templates')
-  @ZodSerializerDto(DTOs.ListGameTemplatesResponse)
-  public listTemplates() {
-    return this.rooms.listTemplates();
+  @Get('modes')
+  @ZodSerializerDto(DTOs.ListGameModesResponse)
+  public listModes() {
+    return this.rooms.listModes();
   }
 
   /**
@@ -193,6 +188,25 @@ export class GameRuntimeController {
     return this.rooms.updateSeat(uuid, participantId, data);
   }
 
+  /** Host only: deals the next hand. */
+  @Post(':uuid/hands')
+  @HttpCode(HttpStatus.CREATED)
+  @ZodSerializerDto(DTOs.StartHandResponse)
+  public startHand(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.startHand(uuid, participantId);
+  }
+
+  /**
+   * Host only, free mode: opens the next round.
+   *
+   * A separate route from `/hands` rather than one neutral "next deal": the two
+   * are different objects with different lifecycles, and a route that answered
+   * both would leave every client checking the mode to know what it just got.
+   */
   @Post(':uuid/rounds')
   @HttpCode(HttpStatus.CREATED)
   @ZodSerializerDto(DTOs.StartRoundResponse)
@@ -216,6 +230,28 @@ export class GameRuntimeController {
     return this.rooms.submitAction(uuid, participantId, data);
   }
 
+  /**
+   * Host only: settles a showdown. The cards are on the physical table and the
+   * app never sees them, so the winner is declared rather than computed — which
+   * is also why this is a separate call and not a flag on an action.
+   */
+  @Post(':uuid/hands/current/showdown')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.DeclareWinnersResponse)
+  public declareWinners(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() data: DTOs.DeclareWinnersData,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.declareWinners(uuid, participantId, data.awards);
+  }
+
+  /**
+   * Host only, free mode: settles the open round on the winners the table
+   * names. The free runtime evaluates one automatic end condition and no more,
+   * so this is how nearly every round of it ends.
+   */
   @Post(':uuid/rounds/current/resolve')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.ResolveRoundResponse)

@@ -1,3 +1,4 @@
+import { FreeSession } from '@modules/game-core/free/free-session';
 import type {
   AddSeatParams,
   ClaimParams,
@@ -8,6 +9,7 @@ import {
   serializeSession,
   type RuntimeSnapshot,
 } from '@modules/game-core/game-runtime.snapshot';
+import { PokerSession } from '@modules/game-core/poker/poker-session';
 import { GameSession } from '@modules/game-core/runtime/game-session';
 import {
   BadRequestException,
@@ -16,17 +18,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  EndResolution,
-  RoundStatus,
+  GameMode,
+  GameSessionStatus,
+  HandStatus,
   type GameConfig,
+  type GameResolution,
+  type HandResolution,
+  type PotAward,
   type RoundResolution,
   type SubmitActionData,
 } from '@tokenizer/shared/types';
 
 /**
- * The in-memory game runtime. Holds the live aggregates, orchestrates their
- * lifecycle and evaluates end conditions. No transport and no persistence:
- * `GameRoomsService` maps the aggregates onto the database rows.
+ * The in-memory game runtime. Holds the live aggregates and their lifecycle; no
+ * transport and no persistence. The rules themselves live a layer down, in each
+ * mode's own runtime (`poker/`, `free/`), which is where they belong: this
+ * service neither knows nor decides what a legal move is.
+ *
+ * What it does know is which mode a session is: the aggregate is built from the
+ * config's discriminator, and every call that is a mode's own asks for that
+ * mode's session back rather than testing a flag inline.
  */
 @Injectable()
 export class GameRuntimeService {
@@ -47,9 +58,13 @@ export class GameRuntimeService {
     if (this.sessions.has(gameId)) {
       throw new BadRequestException(`Game session ${gameId} is already open`);
     }
-    const session = new GameSession(gameId, config, ownerUuid, seats);
+    const session =
+      config.mode === GameMode.Poker
+        ? new PokerSession(gameId, config, ownerUuid, seats)
+        : new FreeSession(gameId, config, ownerUuid, seats);
+
     this.sessions.set(session.id, session);
-    this.logger.log(`Opened game session ${session.id}`);
+    this.logger.log(`Opened game session ${session.id} (${config.mode})`);
     return this.snapshot(session.id);
   }
 
@@ -60,6 +75,15 @@ export class GameRuntimeService {
   /** Drops the in-memory aggregate; persisted state is untouched. */
   disposeSession(gameId: string): void {
     this.sessions.delete(gameId);
+  }
+
+  /**
+   * Whether the table is over. Answered off the aggregate rather than the row
+   * because the callers are socket-lifecycle ones: they run per disconnect, and
+   * a database read per dropped socket would be a query for every refresh.
+   */
+  isFinished(gameId: string): boolean {
+    return this.sessions.get(gameId)?.status === GameSessionStatus.Finished;
   }
 
   snapshot(gameId: string): RuntimeSnapshot {
@@ -107,6 +131,11 @@ export class GameRuntimeService {
     this.getSessionOrThrow(gameId).assertCanAddSeat();
   }
 
+  /** Where a seat sits at the table, by its id. */
+  seatIndexOf(gameId: string, participantId: string): number {
+    return this.getSessionOrThrow(gameId).seatOrThrow(participantId).seatIndex;
+  }
+
   /** The seat a holder identity already occupies, if any. */
   findSeatByHolder(gameId: string, holderId: string): Optional<string> {
     return this.getSessionOrThrow(gameId).seats.find(
@@ -124,61 +153,119 @@ export class GameRuntimeService {
     return { snapshot: this.snapshot(gameId), participantId: seat.id };
   }
 
-  startRound(gameId: string): RuntimeSnapshot {
-    const session = this.getSessionOrThrow(gameId);
+  /** Poker: deals a hand — the button moves, the antes and blinds go in. */
+  startHand(gameId: string): {
+    snapshot: RuntimeSnapshot;
+    resolution?: HandResolution;
+  } {
+    const session = this.pokerSessionOrThrow(gameId);
+    const hand = session.startHand();
+    this.logger.log(`Hand ${hand.handNumber} dealt in ${gameId}`);
+
+    return {
+      snapshot: this.snapshot(gameId),
+      // Antes and blinds alone can put everybody all-in, which settles the
+      // hand before anybody is asked for a move.
+      resolution: hand.resolution ?? undefined,
+    };
+  }
+
+  /** Free mode: opens a round and takes the forced bets the host declared. */
+  startRound(gameId: string): { snapshot: RuntimeSnapshot } {
+    const session = this.freeSessionOrThrow(gameId);
     const round = session.startRound();
-    round.applyForcedBets();
     this.logger.log(`Round ${round.id} started in ${gameId}`);
-    return this.snapshot(gameId);
+    return { snapshot: this.snapshot(gameId) };
   }
 
   /**
-   * Applies an action, then evaluates automatic end conditions. Returns the
-   * fresh snapshot plus a resolution descriptor when the round terminated. With
-   * no `targetParticipantId`, acts on the caller's own seat; the host may
-   * target an unclaimed seat instead, acting on its behalf.
+   * Plays a move. The deal decides whether it is legal, what it costs and
+   * whether it ends anything; this only says whose seat it lands on and which
+   * vocabulary the payload has to be in. With no `targetParticipantId`, the
+   * seat is the caller's own; the host may target an unclaimed seat instead,
+   * acting on its behalf.
    */
   submitAction(
     gameId: string,
     callerParticipantId: string,
     params: SubmitActionData,
-  ): { snapshot: RuntimeSnapshot; resolution?: RoundResolution } {
+  ): { snapshot: RuntimeSnapshot; resolution?: GameResolution } {
     const session = this.getSessionOrThrow(gameId);
-    if (!session.currentRound) {
-      throw new BadRequestException('No round is in progress');
-    }
-
     const participant = session.resolveActingParticipant(
       callerParticipantId,
       params.targetParticipantId,
     );
-    session.currentRound.submitAction({
-      participantId: participant.id,
-      definitionId: params.definitionId,
-      amount: params.amount,
-    });
 
-    const resolution = this.evaluateEndConditions(gameId);
+    if (session instanceof PokerSession) {
+      if (params.action === undefined) {
+        throw new BadRequestException(
+          'This table plays poker — name a poker action, not a catalog entry',
+        );
+      }
+      const hand = session.currentHand;
+      if (!hand) throw new BadRequestException('No hand is in progress');
+
+      hand.submitAction(participant, params.action, params.amount);
+      if (hand.resolution) {
+        this.logger.log(
+          `Hand ${hand.handNumber} of ${gameId} settled (${hand.resolution.reason})`,
+        );
+      }
+      return {
+        snapshot: this.snapshot(gameId),
+        resolution: hand.resolution ?? undefined,
+      };
+    }
+
+    const free = session as FreeSession;
+    if (params.definitionId === undefined) {
+      throw new BadRequestException(
+        'This table plays its own rules — name an action from its catalog',
+      );
+    }
+
+    const resolution = free.submitAction(
+      participant,
+      params.definitionId,
+      params.amount,
+    );
+    if (resolution) {
+      this.logger.log(
+        `Round ${resolution.roundId} of ${gameId} resolved (${resolution.reason})`,
+      );
+    }
     return { snapshot: this.snapshot(gameId), resolution };
   }
 
-  /** Host-driven termination for MANUAL_HOST end policies. */
+  /**
+   * Poker: settles a showdown from the table's own verdict. The app holds the
+   * chips, not the cards: who won is the one thing it has to be told.
+   */
+  declareWinners(
+    gameId: string,
+    awards: PotAward[],
+  ): { snapshot: RuntimeSnapshot; resolution: HandResolution } {
+    const session = this.pokerSessionOrThrow(gameId);
+    const hand = session.currentHand;
+    if (!hand || hand.status === HandStatus.Settled) {
+      throw new BadRequestException('No hand is waiting on a showdown');
+    }
+
+    const resolution = hand.declareWinners(awards);
+    this.logger.log(`Hand ${hand.handNumber} of ${gameId} settled (showdown)`);
+    return { snapshot: this.snapshot(gameId), resolution };
+  }
+
+  /** Free mode: settles the open round on the winners the table names. */
   resolveRound(
     gameId: string,
     winnerParticipantIds: string[] = [],
   ): { snapshot: RuntimeSnapshot; resolution: RoundResolution } {
-    const session = this.getSessionOrThrow(gameId);
-    const round = session.currentRound;
-    if (!round || round.status !== RoundStatus.InProgress) {
-      throw new BadRequestException('No active round to resolve');
-    }
-
-    const winners = winnerParticipantIds.length
-      ? winnerParticipantIds.map((id) => session.seatOrThrow(id).id)
-      : round.contenders().map((p) => p.id);
-
-    round.resolve(winners);
-    const resolution = this.buildResolution(round.id, 'MANUAL_HOST', winners);
+    const session = this.freeSessionOrThrow(gameId);
+    const resolution = session.resolveRound(winnerParticipantIds);
+    this.logger.log(
+      `Round ${resolution.roundId} of ${gameId} resolved (${resolution.reason})`,
+    );
     return { snapshot: this.snapshot(gameId), resolution };
   }
 
@@ -203,36 +290,26 @@ export class GameRuntimeService {
   }
 
   /**
-   * V0 automatic end condition: LAST_PLAYER_STANDING. When a single contender
-   * remains, the round auto-resolves and the pot is awarded to the survivor.
+   * The session, refused unless it is a poker table.
+   *
+   * A 400 rather than a 404: the room exists, it is simply not playing the game
+   * the caller is speaking — which is a client calling the wrong route, not a
+   * missing session.
    */
-  private evaluateEndConditions(gameId: string): Optional<RoundResolution> {
+  private pokerSessionOrThrow(gameId: string): PokerSession {
     const session = this.getSessionOrThrow(gameId);
-    const round = session.currentRound;
-    if (!round || round.status !== RoundStatus.InProgress) return undefined;
-
-    const { endPolicy } = session.config;
-    if (endPolicy.resolution !== EndResolution.Automatic) return undefined;
-
-    const hasLastStanding = endPolicy.conditions.some(
-      (c) => c.type === 'LAST_PLAYER_STANDING',
-    );
-    if (!hasLastStanding) return undefined;
-
-    const contenders = round.contenders();
-    if (contenders.length > 1) return undefined;
-
-    const winners = contenders.map((p) => p.id);
-    round.resolve(winners);
-    return this.buildResolution(round.id, 'LAST_PLAYER_STANDING', winners);
+    if (!(session instanceof PokerSession)) {
+      throw new BadRequestException('This table is not playing poker');
+    }
+    return session;
   }
 
-  private buildResolution(
-    roundId: string,
-    reason: RoundResolution['reason'],
-    winners: string[],
-  ): RoundResolution {
-    this.logger.log(`Round ${roundId} resolved (${reason})`);
-    return { roundId, reason, winners };
+  /** {@link pokerSessionOrThrow}, for the free table's own calls. */
+  private freeSessionOrThrow(gameId: string): FreeSession {
+    const session = this.getSessionOrThrow(gameId);
+    if (!(session instanceof FreeSession)) {
+      throw new BadRequestException('This table is not playing its own rules');
+    }
+    return session;
   }
 }
