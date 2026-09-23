@@ -366,7 +366,26 @@ describe('GameRuntimeService', () => {
     });
   });
 
-  describe('proxy actions (host acting on behalf of an unclaimed seat)', () => {
+  describe('proxy actions (host covering any seat nobody is connected to)', () => {
+    it('lets the host cover a seat nobody ever claimed', () => {
+      service.startHand(GAME_ID);
+      // The seat on turn; only the host holds one at this point, so it is free.
+      const free = activeOf(service.snapshot(GAME_ID))!;
+      expect(
+        service.snapshot(GAME_ID).participants.find((p) => p.id === free)
+          ?.controller,
+      ).toBeNull();
+
+      expect(() =>
+        service.submitAction(
+          GAME_ID,
+          hostSeatId(),
+          { targetParticipantId: free, action: PokerAction.Fold },
+          () => false,
+        ),
+      ).not.toThrow();
+    });
+
     it('rejects a non-host caller targeting another seat', () => {
       service.claimSeat(GAME_ID, {
         holderId: 'bob',
@@ -383,7 +402,47 @@ describe('GameRuntimeService', () => {
       ).toThrow(BadRequestException);
     });
 
-    it('rejects the host targeting an already-claimed seat', () => {
+    it('rejects the host targeting a seat whose player is connected', () => {
+      service.claimSeat(GAME_ID, {
+        holderId: 'bob',
+        displayName: 'Bob',
+        seatIndex: 3,
+      });
+      service.startHand(GAME_ID);
+
+      expect(() =>
+        service.submitAction(
+          GAME_ID,
+          hostSeatId(),
+          {
+            targetParticipantId: seatOf('bob'),
+            action: PokerAction.Call,
+          },
+          () => true,
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it('lets the host cover a claimed seat once its player has dropped', () => {
+      service.claimSeat(GAME_ID, {
+        holderId: 'bob',
+        displayName: 'Bob',
+        seatIndex: 3,
+      });
+      service.startHand(GAME_ID);
+      const bobSeat = seatOf('bob');
+
+      expect(() =>
+        service.submitAction(
+          GAME_ID,
+          hostSeatId(),
+          { targetParticipantId: bobSeat, action: PokerAction.Fold },
+          (id) => id !== bobSeat,
+        ),
+      ).not.toThrow();
+    });
+
+    it('treats a claimed seat as covered by its player when presence is unknown', () => {
       service.claimSeat(GAME_ID, {
         holderId: 'bob',
         displayName: 'Bob',
@@ -405,6 +464,25 @@ describe('GameRuntimeService', () => {
 
     service.claimSeat(GAME_ID, { holderId: 'bob', displayName: 'Bob' });
     expect(service.isHost(GAME_ID, seatOf('bob'))).toBe(false);
+  });
+
+  it('refuses the host seat to a player asking for it by index', () => {
+    expect(() =>
+      service.claimSeat(GAME_ID, {
+        holderId: 'bob',
+        displayName: 'Bob',
+        seatIndex: 0,
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('lets the owner back into the host seat they already hold', () => {
+    const again = service.claimSeat(GAME_ID, {
+      holderId: HOST_UUID,
+      seatIndex: 0,
+    });
+
+    expect(again.participantId).toBe(hostSeatId());
   });
 
   it('never hands the host seat to a player taking the first free one', () => {

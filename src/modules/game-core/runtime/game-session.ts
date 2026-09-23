@@ -123,10 +123,19 @@ export abstract class GameSession<TConfig extends GameConfig = GameConfig> {
           `Seat ${params.seatIndex} is already claimed`,
         );
       }
+      // The host seat is never handed out: it carries the authority to deal
+      // and close the game, and it belongs to whoever created the table. The
+      // creator takes it as part of creating, and reaches it again through the
+      // reconnection branch above; for everyone else it is simply not a chair.
+      if (
+        seat.role === ParticipantRole.Host &&
+        params.holderId !== this.ownerUuid
+      ) {
+        throw new BadRequestException(
+          'The host seat belongs to the table owner',
+        );
+      }
     } else {
-      // Never hand out the host seat by default: it carries the authority to
-      // deal and close the game, and it belongs to whoever created it. Taking
-      // it has to be deliberate.
       seat = seats.find((p) => !p.claimed && p.role !== ParticipantRole.Host);
       if (!seat) {
         throw new BadRequestException('No free seat left');
@@ -236,15 +245,28 @@ export abstract class GameSession<TConfig extends GameConfig = GameConfig> {
   }
 
   /**
-   * Resolves which seat an action acts on. With no target, it is the caller's
-   * own seat — identified by the participant id their token carries, so it
-   * cannot be another's. The host may instead target an unclaimed seat and act
-   * on its behalf (a companion noting a table player's move); every declared
-   * seat is dealt in from the first deal, claimed or not.
+   * Resolves which seat an action acts on.
+   *
+   * Without a target it is the caller's own seat — identified by the
+   * participant id their token carries, so it can never be another's. That is
+   * the whole of it for a player: one token, one chair.
+   *
+   * The host may target any seat nobody is connected to, and act for it (a
+   * companion noting a table player's move). A free seat qualifies for want of
+   * anyone to hold it; a claimed one qualifies once its player has dropped. The
+   * line is presence, not ownership: whoever is actually at the table answers
+   * for their own seat, and the host stepping in for someone sitting right
+   * there is how two people end up playing one hand.
+   *
+   * Presence arrives as `isConnected` rather than as a service, because the
+   * runtime is not allowed to know what a socket is — same reason it never
+   * reads the database. Absent that answer a claimed seat is assumed held, so a
+   * caller that cannot see presence loses the proxy rather than gains it.
    */
   resolveActingParticipant(
     callerParticipantId: string,
     targetParticipantId?: string,
+    isConnected?: (participantId: string) => boolean,
   ): Participant {
     if (targetParticipantId === undefined) {
       return this.seatOrThrow(callerParticipantId);
@@ -257,9 +279,9 @@ export abstract class GameSession<TConfig extends GameConfig = GameConfig> {
     }
 
     const seat = this.seatOrThrow(targetParticipantId);
-    if (seat.claimed) {
+    if (seat.claimed && (isConnected?.(seat.id) ?? true)) {
       throw new BadRequestException(
-        'The host can only act on behalf of an unclaimed seat',
+        'The host can only act on behalf of a seat nobody is connected to',
       );
     }
     return seat;

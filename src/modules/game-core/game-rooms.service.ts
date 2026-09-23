@@ -435,7 +435,12 @@ export class GameRoomsService {
     data: SubmitActionData,
   ): Promise<{ snapshot: GameSnapshot; resolution?: GameResolution }> {
     await this.ensureRoomOpen(gameUuid);
-    const result = this.runtime.submitAction(gameUuid, participantId, data);
+    const result = this.runtime.submitAction(
+      gameUuid,
+      participantId,
+      data,
+      (id) => this.presence.isParticipantConnected(gameUuid, id),
+    );
 
     const session = await this.loadPlayableSession(gameUuid);
     if (result.resolution) {
