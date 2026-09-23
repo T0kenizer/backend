@@ -40,6 +40,15 @@ export class GameLifecycleConsumer extends WorkerHost {
         break;
       }
 
+      case Types.GameLifecycleJob.TeardownClosedRoom: {
+        // No presence check, unlike every other branch: this room belongs to a
+        // table that is already over. Whoever is still connected is reading the
+        // recap off a snapshot they already hold, so dropping the socket costs
+        // them nothing.
+        await this.rooms.teardownClosedRoom(job.data.gameUuid);
+        break;
+      }
+
       case Types.GameLifecycleJob.PlayerDisconnected: {
         const { gameUuid, participantId } = job.data;
         // They refreshed the page and are already back.

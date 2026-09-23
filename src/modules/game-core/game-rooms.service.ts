@@ -453,17 +453,6 @@ export class GameRoomsService {
     };
   }
 
-  /**
-   * Host-only termination: settles the final balances, stamps the row so the
-   * room can never re-open, retires the code and drops every socket.
-   */
-  @CreateRequestContext()
-  async closeGame(
-    gameUuid: string,
-    participantId: string,
-  ): Promise<GameSnapshot> {
-    await this.ensureRoomOpen(gameUuid);
-    this.assertHost(gameUuid, participantId);
   /** Host-only, free mode: settles the open round; balances are persisted. */
   @CreateRequestContext()
   async resolveRound(
@@ -484,15 +473,54 @@ export class GameRoomsService {
     };
   }
 
+  /**
+   * Host-only termination: settles the final balances, stamps the row so the
+   * room can never re-open, and retires the code.
+   *
+   * What it deliberately does _not_ do is drop the sockets. The table has to be
+   * told it is over before it is taken apart — the caller broadcasts this very
+   * snapshot as `SESSION_CLOSED`, and tearing the room down first would have
+   * emptied it before the message went out, which is exactly how a table full
+   * of people used to be disconnected without ever being told why.
+   *
+   * So the room outlives the call. Every client switches to the recap, leaves
+   * on its own, and the last one out takes the room with it
+   * ({@link onPlayerDisconnected}); {@link teardownClosedRoom} is the backstop
+   * for the tabs that never leave.
+   */
+  @CreateRequestContext()
+  async closeGame(
+    gameUuid: string,
+    participantId: string,
+  ): Promise<GameSnapshot> {
+    await this.ensureRoomOpen(gameUuid);
+    this.assertHost(gameUuid, participantId);
 
     const snapshot = this.runtime.closeSession(gameUuid);
     const session = await this.loadPlayableSession(gameUuid);
     await this.gameSessionsService.syncBalances(session, balancesOf(snapshot));
     await this.gameSessionsService.close(session, GameSessionStatus.Finished);
 
-    const finalized = await this.finalize(snapshot, session);
+    // The code dies with the game — a table nobody can play is a table nobody
+    // may join — and it goes before the snapshot is finalized so the recap
+    // never shows a code that would be refused.
+    await this.lifecycle.cancelRoomClosure(gameUuid);
+    await this.codes.revoke(gameUuid);
+    await this.lifecycle.scheduleRoomTeardown(gameUuid);
+
+    this.logger.log(`Session ${gameUuid} ended by its host`);
+    return this.finalize(snapshot, session);
+  }
+
+  /**
+   * Drops the room of a table that has already ended. Silent by design: the
+   * session was closed, announced and read minutes ago, so there is nothing
+   * left to tell anybody — this only reclaims the room and the aggregate.
+   */
+  async teardownClosedRoom(gameUuid: string): Promise<void> {
+    if (!this.runtime.hasSession(gameUuid)) return;
     await this.teardown(gameUuid);
-    return finalized;
+    this.logger.log(`Room for the ended session ${gameUuid} reclaimed`);
   }
 
   /**
@@ -520,10 +548,17 @@ export class GameRoomsService {
     }
     await this.gameSessionsService.close(session, GameSessionStatus.Abandoned);
 
-    this.presence.broadcast(gameUuid, GAME_SERVER_EVENTS.SESSION_CLOSED, {
-      id: gameUuid,
-      status: GameSessionStatus.Abandoned,
-    });
+    // A whole snapshot, not a `{ id, status }` stub. The room is empty by the
+    // time this runs — that is what armed the job — but a socket that raced in
+    // would otherwise be handed a shape with no seats in it, and the recap it
+    // is about to draw is made of seats.
+    this.presence.broadcast(
+      gameUuid,
+      GAME_SERVER_EVENTS.SESSION_CLOSED,
+      this.runtime.hasSession(gameUuid)
+        ? await this.finalize(this.runtime.snapshot(gameUuid), session)
+        : { id: gameUuid, status: GameSessionStatus.Abandoned },
+    );
     await this.teardown(gameUuid);
     this.logger.log(
       `Session ${gameUuid} abandoned after an empty grace period`,
@@ -621,6 +656,18 @@ export class GameRoomsService {
     gameUuid: string,
     participantId: string,
   ): Promise<void> {
+    // A table that has already ended is only waiting for its last viewer to
+    // close the recap. There is no departure to announce — nobody is left to
+    // hear it — and nothing to abandon, so the room goes now rather than
+    // sitting out a grace period meant for tables that might still resume.
+    if (this.runtime.isFinished(gameUuid)) {
+      if (this.presence.isRoomEmpty(gameUuid)) {
+        await this.lifecycle.cancelRoomTeardown(gameUuid);
+        await this.teardownClosedRoom(gameUuid);
+      }
+      return;
+    }
+
     await this.lifecycle.schedulePlayerDeparture(gameUuid, participantId);
     if (this.presence.isRoomEmpty(gameUuid)) {
       await this.lifecycle.scheduleRoomClosure(gameUuid);
@@ -704,6 +751,7 @@ export class GameRoomsService {
   /** Drops the runtime cache and the sockets; the rows keep the truth. */
   private async teardown(gameUuid: string): Promise<void> {
     await this.lifecycle.cancelRoomClosure(gameUuid);
+    await this.lifecycle.cancelRoomTeardown(gameUuid);
     await this.codes.revoke(gameUuid);
     this.runtime.disposeSession(gameUuid);
     this.presence.closeRoom(gameUuid);

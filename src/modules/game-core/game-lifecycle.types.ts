@@ -3,6 +3,8 @@ import type { Job, Queue } from 'bullmq';
 export enum GameLifecycleJob {
   /** A room went empty; close the session unless somebody came back. */
   CloseEmptyRoom = 'close-empty-room',
+  /** A table was ended; drop its room once everyone has read the recap. */
+  TeardownClosedRoom = 'teardown-closed-room',
   /** A socket dropped; decide whether its seat holder is really gone. */
   PlayerDisconnected = 'player-disconnected',
   /** Periodic safety net for lifecycle jobs lost to a restart. */
@@ -10,6 +12,10 @@ export enum GameLifecycleJob {
 }
 
 export interface CloseEmptyRoomJobData {
+  gameUuid: string;
+}
+
+export interface TeardownClosedRoomJobData {
   gameUuid: string;
 }
 
@@ -22,6 +28,7 @@ export type SweepStaleSessionsJobData = Record<string, never>;
 
 export type GameLifecycleJobData = {
   [GameLifecycleJob.CloseEmptyRoom]: CloseEmptyRoomJobData;
+  [GameLifecycleJob.TeardownClosedRoom]: TeardownClosedRoomJobData;
   [GameLifecycleJob.PlayerDisconnected]: PlayerDisconnectedJobData;
   [GameLifecycleJob.SweepStaleSessions]: SweepStaleSessionsJobData;
 };

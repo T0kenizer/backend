@@ -58,6 +58,31 @@ export class GameLifecycleService implements OnModuleInit {
     );
   }
 
+  /**
+   * Arms the teardown of a table that has just ended.
+   *
+   * Only a backstop: a client that received the final snapshot leaves of its
+   * own accord, and the last one out takes the room with it. This covers the
+   * ones that never leave, so a closed table cannot sit in memory forever.
+   */
+  public async scheduleRoomTeardown(gameUuid: string): Promise<void> {
+    await this.queue.add(
+      Types.GameLifecycleJob.TeardownClosedRoom,
+      { gameUuid },
+      {
+        jobId: Types.teardownClosedRoomJobId(gameUuid),
+        delay: Constants.CLOSED_ROOM_GRACE_MS,
+        removeOnComplete: true,
+        removeOnFail: { age: 3600 },
+      },
+    );
+  }
+
+  /** The room emptied on its own, so the backstop has nothing left to do. */
+  public async cancelRoomTeardown(gameUuid: string): Promise<void> {
+    await this.remove(Types.teardownClosedRoomJobId(gameUuid));
+  }
+
   /** Someone came back: drop the pending closure. */
   public async cancelRoomClosure(gameUuid: string): Promise<void> {
     await this.remove(Types.closeEmptyRoomJobId(gameUuid));

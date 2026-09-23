@@ -77,6 +77,15 @@ export class GameRuntimeService {
     this.sessions.delete(gameId);
   }
 
+  /**
+   * Whether the table is over. Answered off the aggregate rather than the row
+   * because the callers are socket-lifecycle ones: they run per disconnect, and
+   * a database read per dropped socket would be a query for every refresh.
+   */
+  isFinished(gameId: string): boolean {
+    return this.sessions.get(gameId)?.status === GameSessionStatus.Finished;
+  }
+
   snapshot(gameId: string): RuntimeSnapshot {
     return serializeSession(gameId, this.getSessionOrThrow(gameId));
   }

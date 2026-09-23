@@ -115,6 +115,8 @@ describe('GameRoomsService', () => {
   let lifecycle: {
     scheduleRoomClosure: jest.Mock;
     cancelRoomClosure: jest.Mock;
+    scheduleRoomTeardown: jest.Mock;
+    cancelRoomTeardown: jest.Mock;
     schedulePlayerDeparture: jest.Mock;
     cancelPlayerDeparture: jest.Mock;
   };
@@ -175,6 +177,8 @@ describe('GameRoomsService', () => {
     lifecycle = {
       scheduleRoomClosure: jest.fn().mockResolvedValue(undefined),
       cancelRoomClosure: jest.fn().mockResolvedValue(undefined),
+      scheduleRoomTeardown: jest.fn().mockResolvedValue(undefined),
+      cancelRoomTeardown: jest.fn().mockResolvedValue(undefined),
       schedulePlayerDeparture: jest.fn().mockResolvedValue(undefined),
       cancelPlayerDeparture: jest.fn().mockResolvedValue(undefined),
     };
@@ -470,7 +474,7 @@ describe('GameRoomsService', () => {
       expect(gameSessions.close).not.toHaveBeenCalled();
     });
 
-    it('settles balances, retires the code and drops the sockets on close', async () => {
+    it('settles balances and retires the code on close', async () => {
       await service.closeGame(GAME_UUID, hostSeat);
 
       expect(gameSessions.syncBalances).toHaveBeenCalled();
@@ -479,13 +483,53 @@ describe('GameRoomsService', () => {
         GameSessionStatus.Finished,
       );
       expect(codes.revoke).toHaveBeenCalledWith(GAME_UUID);
-      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
-      expect(runtime.hasSession(GAME_UUID)).toBe(false);
       // hostToken is now worth nothing: the session refuses to re-open.
       expect(tokens.verify(hostToken, GAME_UUID)).toBeDefined();
       await expect(service.ensureRoomOpen(GAME_UUID)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('keeps the room up so the table can be told it is over', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+
+      // The caller broadcasts the final snapshot into this very room; dropping
+      // the sockets here would empty it before the message went out.
+      expect(presence.closeRoom).not.toHaveBeenCalled();
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+      expect(lifecycle.scheduleRoomTeardown).toHaveBeenCalledWith(GAME_UUID);
+    });
+
+    it('reclaims the room when the last viewer closes the recap', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+      presence.isRoomEmpty.mockReturnValue(true);
+
+      await service.onPlayerDisconnected(GAME_UUID, hostSeat);
+
+      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
+      // Nothing to abandon and nobody to tell: the table is already over.
+      expect(lifecycle.scheduleRoomClosure).not.toHaveBeenCalled();
+      expect(lifecycle.schedulePlayerDeparture).not.toHaveBeenCalled();
+    });
+
+    it('holds the recap open while somebody is still reading it', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+      presence.isRoomEmpty.mockReturnValue(false);
+
+      await service.onPlayerDisconnected(GAME_UUID, hostSeat);
+
+      expect(presence.closeRoom).not.toHaveBeenCalled();
+      expect(runtime.hasSession(GAME_UUID)).toBe(true);
+    });
+
+    it('reclaims the room from the backstop when nobody ever leaves', async () => {
+      await service.closeGame(GAME_UUID, hostSeat);
+
+      await service.teardownClosedRoom(GAME_UUID);
+
+      expect(presence.closeRoom).toHaveBeenCalledWith(GAME_UUID);
+      expect(runtime.hasSession(GAME_UUID)).toBe(false);
     });
   });
 
