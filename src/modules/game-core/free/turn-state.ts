@@ -23,7 +23,6 @@ export class TurnState {
   private readonly catalog: ActionDef[];
   /** The round's participants, seat-ordered, held by reference. */
   private readonly participants: Participant[];
-  private interruptionTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     policy: TurnPolicy,
@@ -81,30 +80,22 @@ export class TurnState {
    * Opens the interruption window when the regime supports it. Returns whether
    * the window actually opened, so the caller can advance the turn normally
    * when it did not.
+   *
+   * Nothing closes the window on a clock: it stays open until a claim is
+   * resolved or the round settles. A table of people looking at each other
+   * decides when the moment has passed, and a timer firing from the server only
+   * ever contradicts them.
    */
-  openInterruptionWindow(onExpire?: () => void): boolean {
+  openInterruptionWindow(): boolean {
     if (this.policy.regime !== TurnRegime.SequentialInterruptible) return false;
     if (this.policy.interruptionWindow === null) return false;
 
     this.interruptionOpen = true;
-
-    if (onExpire) {
-      this.interruptionTimer = setTimeout(() => {
-        this.interruptionOpen = false;
-        this.interruptionTimer = undefined;
-        onExpire();
-      }, this.policy.interruptionWindow);
-      this.interruptionTimer.unref?.();
-    }
     return true;
   }
 
   closeInterruptionWindow(): void {
     this.interruptionOpen = false;
-    if (this.interruptionTimer !== undefined) {
-      clearTimeout(this.interruptionTimer);
-      this.interruptionTimer = undefined;
-    }
     this.pendingClaims = [];
   }
 

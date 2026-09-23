@@ -13,6 +13,7 @@ export class AccountDeletionToken extends Token {
   @ManyToOne(() => User, {
     name: 'user_uuid',
     nullable: false,
+    deleteRule: 'cascade',
   })
   user!: User;
 }

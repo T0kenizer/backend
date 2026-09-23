@@ -182,18 +182,20 @@ export class GameRuntimeService {
    * Plays a move. The deal decides whether it is legal, what it costs and
    * whether it ends anything; this only says whose seat it lands on and which
    * vocabulary the payload has to be in. With no `targetParticipantId`, the
-   * seat is the caller's own; the host may target an unclaimed seat instead,
-   * acting on its behalf.
+   * seat is the caller's own; the host may instead target any seat nobody is
+   * connected to, acting on its behalf.
    */
   submitAction(
     gameId: string,
     callerParticipantId: string,
     params: SubmitActionData,
+    isConnected?: (participantId: string) => boolean,
   ): { snapshot: RuntimeSnapshot; resolution?: GameResolution } {
     const session = this.getSessionOrThrow(gameId);
     const participant = session.resolveActingParticipant(
       callerParticipantId,
       params.targetParticipantId,
+      isConnected,
     );
 
     if (session instanceof PokerSession) {

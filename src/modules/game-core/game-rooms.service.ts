@@ -27,9 +27,11 @@ import {
   canUseMode,
   maxSeatsFor,
 } from '@tokenizer/shared/constants/plans.constants';
+import { DELETED_USER_CLAIM } from '@tokenizer/shared/constants/users.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
   GameSessionStatus,
+  Plan,
   type ClaimSeatData,
   type CreateGameSessionData,
   type GameConfig,
@@ -209,7 +211,10 @@ export class GameRoomsService {
       this.runtime.registerSession(
         session.uuid,
         config,
-        session.owner.uuid,
+        // An ownerless table (the account was deleted) rehydrates under the
+        // marker: it is not a uuid, so nothing can ever present it and host
+        // authority is simply gone rather than up for grabs.
+        session.owner?.uuid ?? DELETED_USER_CLAIM,
         seatInits(session.participants.getItems()),
       );
       this.logger.log(`Room ${gameUuid} opened from persisted session`);
@@ -338,7 +343,7 @@ export class GameRoomsService {
     this.runtime.assertCanAddSeat(gameUuid);
 
     const seatCount = session.participants.getItems().length;
-    const allowed = maxSeatsFor(session.owner.plan);
+    const allowed = maxSeatsFor(session.owner?.plan ?? Plan.Free);
     if (seatCount >= allowed) {
       throw new ForbiddenException(
         `This table cannot grow past ${allowed} seats`,
@@ -430,7 +435,12 @@ export class GameRoomsService {
     data: SubmitActionData,
   ): Promise<{ snapshot: GameSnapshot; resolution?: GameResolution }> {
     await this.ensureRoomOpen(gameUuid);
-    const result = this.runtime.submitAction(gameUuid, participantId, data);
+    const result = this.runtime.submitAction(
+      gameUuid,
+      participantId,
+      data,
+      (id) => this.presence.isParticipantConnected(gameUuid, id),
+    );
 
     const session = await this.loadPlayableSession(gameUuid);
     if (result.resolution) {
@@ -799,7 +809,7 @@ export class GameRoomsService {
       // the owner's plan to work it out.
       canAddSeat:
         this.runtime.canAddSeat(session.uuid) &&
-        participants.length < maxSeatsFor(session.owner.plan),
+        participants.length < maxSeatsFor(session.owner?.plan ?? Plan.Free),
     };
   }
 
@@ -821,8 +831,9 @@ export class GameRoomsService {
     config: GameConfig,
     connected: ReadonlySet<string>,
   ): Promise<ParticipantSnapshot> {
-    // Anonymous holders are prefixed (`anon:<uuid>`), so only a real account
-    // uuid ever reaches the database.
+    // Anonymous holders are prefixed (`anon:<uuid>`) and a seat whose account
+    // was deleted carries the marker, so only a real account uuid ever reaches
+    // the database.
     const account =
       p.controller && z.uuid().safeParse(p.controller).success
         ? await this.usersService.findUserByUuid(p.controller)
@@ -836,10 +847,13 @@ export class GameRoomsService {
       status: p.status,
       claimed: p.controller !== null,
       connected: connected.has(p.id),
+      // A deleted account outranks the seat's configured name: the chair is
+      // still taken, and answering `Seat 3` here would read as a free one.
       displayName:
         p.displayNameOverride ??
         account?.displayName ??
         account?.username ??
+        (p.controller === DELETED_USER_CLAIM ? DELETED_USER_CLAIM : null) ??
         config.seating.seats[p.seatIndex]?.displayName ??
         `Seat ${p.seatIndex + 1}`,
       photoUrl: account
