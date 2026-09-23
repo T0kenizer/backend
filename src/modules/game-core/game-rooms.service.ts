@@ -34,11 +34,13 @@ import {
   type AddSeatData,
   type ClaimSeatData,
   type CreateGameSessionData,
+  type GameResolution,
   type GameConfig,
   type GameModeDescriptor,
   type GameSnapshot,
   type HandResolution,
   type ParticipantSnapshot,
+  type RoundResolution,
   type PotAward,
   type PublicRoomView,
   type SubmitActionData,
@@ -383,13 +385,42 @@ export class GameRoomsService {
     };
   }
 
-  /** Plays a move; when it settles the hand, balances are persisted. */
+  /**
+   * Host-only, free mode: opens the next round.
+   *
+   * No settlement can come out of it — a free round opens on forced bets and
+   * ends when the table says so — which is why this answers a bare snapshot
+   * where {@link startHand} answers a result.
+   */
+  @CreateRequestContext()
+  async startRound(
+    gameUuid: string,
+    participantId: string,
+  ): Promise<GameSnapshot> {
+    await this.ensureRoomOpen(gameUuid);
+    this.assertHost(gameUuid, participantId);
+
+    const { snapshot } = this.runtime.startRound(gameUuid);
+    const session = await this.loadPlayableSession(gameUuid);
+    await this.gameSessionsService.setStatus(
+      session,
+      GameSessionStatus.Running,
+    );
+    // The forced bets have already left the stacks, so the balances have moved
+    // even though nothing has been won yet.
+    await this.persistBalances(gameUuid, session);
+    await this.codes.touch(gameUuid);
+
+    return this.finalize(snapshot, session);
+  }
+
+  /** Plays a move; when it settles the deal, balances are persisted. */
   @CreateRequestContext()
   async submitAction(
     gameUuid: string,
     participantId: string,
     data: SubmitActionData,
-  ): Promise<{ snapshot: GameSnapshot; resolution?: HandResolution }> {
+  ): Promise<{ snapshot: GameSnapshot; resolution?: GameResolution }> {
     await this.ensureRoomOpen(gameUuid);
     const result = this.runtime.submitAction(gameUuid, participantId, data);
 
@@ -437,6 +468,26 @@ export class GameRoomsService {
   ): Promise<GameSnapshot> {
     await this.ensureRoomOpen(gameUuid);
     this.assertHost(gameUuid, participantId);
+  /** Host-only, free mode: settles the open round; balances are persisted. */
+  @CreateRequestContext()
+  async resolveRound(
+    gameUuid: string,
+    participantId: string,
+    winnerParticipantIds: string[] = [],
+  ): Promise<{ snapshot: GameSnapshot; resolution: RoundResolution }> {
+    await this.ensureRoomOpen(gameUuid);
+    this.assertHost(gameUuid, participantId);
+
+    const result = this.runtime.resolveRound(gameUuid, winnerParticipantIds);
+    const session = await this.loadPlayableSession(gameUuid);
+    await this.persistBalances(gameUuid, session);
+
+    return {
+      ...result,
+      snapshot: await this.finalize(result.snapshot, session),
+    };
+  }
+
 
     const snapshot = this.runtime.closeSession(gameUuid);
     const session = await this.loadPlayableSession(gameUuid);

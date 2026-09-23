@@ -1,16 +1,21 @@
 import { Migration } from '@mikro-orm/migrations';
 
 /**
- * Rewrites `game_sessions.config` from the old free-form rule bag into the
- * mode-discriminated shape.
+ * Stamps the mode onto `game_sessions.config`, rewriting the rows that predate
+ * the discriminator into poker's shape.
  *
  * The column is jsonb, so nothing about the table changes — but the config is
  * re-validated against `gameConfigSchema` every time a room is re-opened, and a
- * row still carrying `economy`/`actionCatalog`/`turnPolicy` would fail that
- * parse and take its session with it. Every existing table was poker in all but
- * name, so the mapping is direct: the forced bets labelled `small_blind` and
- * `big_blind` were the blinds, an `ante` was an ante, and the old raise form
- * had no cap, which is no-limit.
+ * row carrying neither `mode` nor poker's `rules` would fail that parse and
+ * take its session with it. Every table that existed before the discriminator
+ * was poker in all but name, so the mapping is direct: the forced bets labelled
+ * `small_blind` and `big_blind` were the blinds, an `ante` was an ante, and the
+ * old raise form had no cap, which is no-limit.
+ *
+ * Only rows with no `mode` are touched. The shape being rewritten here is also
+ * the shape a `FREE` table legitimately carries, so a config that already names
+ * its mode is left exactly as it is — a free table is not an unmigrated poker
+ * one.
  */
 export class Migration20260922143000_GameModes extends Migration {
   override async up(): Promise<void> {
@@ -44,7 +49,8 @@ export class Migration20260922143000_GameModes extends Migration {
           'chipModel', coalesce(s."config"->'economy'->>'chipModel', 'ABSTRACT_BALANCE')
         )
       )
-      where s."config" ? 'economy';
+      where s."config" ? 'economy'
+        and not (s."config" ? 'mode');
     `);
 
     // A table whose big blind was set under its small one was legal in the old
@@ -64,15 +70,20 @@ export class Migration20260922143000_GameModes extends Migration {
   }
 
   /**
-   * Back to the v0 bag, rebuilt from the blinds and the defaults every row
-   * carried: the turn policy, the end policy and the action catalog were the
-   * same four actions on every table that ever existed, so restoring them is a
-   * real inverse rather than a guess.
+   * Back to the shape the free mode carries, rebuilt from the blinds and the
+   * defaults every row held: the turn policy, the end policy and the action
+   * catalog were the same four actions on every table that existed before the
+   * discriminator, so restoring them is a real inverse rather than a guess.
+   *
+   * Poker's rows only. A `FREE` config is already in this shape and was never
+   * produced by the up migration, so rewriting it would be inventing blinds it
+   * never had.
    */
   override async down(): Promise<void> {
     this.addSql(`
       update "game_sessions" s
       set "config" = jsonb_build_object(
+        'mode', 'FREE',
         'seating', s."config"->'seating',
         'economy', jsonb_build_object(
           'potMode', 'SINGLE',
@@ -109,7 +120,7 @@ export class Migration20260922143000_GameModes extends Migration {
           )
         )
       )
-      where s."config" ? 'rules';
+      where s."config"->>'mode' = 'POKER';
     `);
   }
 }

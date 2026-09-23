@@ -5,6 +5,7 @@ import { buildPots, type PotLayer } from '@modules/game-core/poker/pots';
 import type { Participant } from '@modules/game-core/runtime/participant';
 import { BadRequestException } from '@nestjs/common';
 import {
+  GameMode,
   HandEndReason,
   HandEventType,
   HandStatus,
@@ -414,6 +415,7 @@ export class Hand {
     this.status = HandStatus.Settled;
     this.betting.close();
     this.resolution = {
+      mode: GameMode.Poker,
       handId: this.id,
       reason,
       winners: payouts.map((payout) => payout.participantId),

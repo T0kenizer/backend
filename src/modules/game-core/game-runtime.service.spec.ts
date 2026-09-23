@@ -32,14 +32,28 @@ function buildSeats(count: number, initialBalance = 1000): SeatInit[] {
   }));
 }
 
+/**
+ * The snapshot read as poker's. Every table in this spec is a poker table, and
+ * the runtime snapshot is discriminated on `mode` — so the narrowing is stated
+ * once here rather than asserted at each of the twenty reads below.
+ */
+function asPoker(snapshot: RuntimeSnapshot) {
+  if (snapshot.mode !== GameMode.Poker) {
+    throw new Error(`Expected a poker snapshot, got ${snapshot.mode}`);
+  }
+  return snapshot;
+}
+
 function activeOf(snapshot: RuntimeSnapshot): Nullable<string> {
-  return snapshot.currentHand?.betting.activeParticipant ?? null;
+  return asPoker(snapshot).currentHand?.betting.activeParticipant ?? null;
 }
 
 function potOf(snapshot: RuntimeSnapshot): number {
   return (
-    snapshot.currentHand?.pots.reduce((total, pot) => total + pot.amount, 0) ??
-    0
+    asPoker(snapshot).currentHand?.pots.reduce(
+      (total, pot) => total + pot.amount,
+      0,
+    ) ?? 0
   );
 }
 
@@ -95,7 +109,7 @@ describe('GameRuntimeService', () => {
     const snapshot = service.snapshot(GAME_ID);
 
     expect(snapshot.mode).toBe(GameMode.Poker);
-    expect(snapshot.stakes.blinds).toEqual({ small: 5, big: 10 });
+    expect(asPoker(snapshot).stakes.blinds).toEqual({ small: 5, big: 10 });
     expect(snapshot.participants).toHaveLength(4);
     expect(snapshot.participants[0]).toMatchObject({
       role: ParticipantRole.Host,
@@ -204,7 +218,7 @@ describe('GameRuntimeService', () => {
     it('deals every seat in, posts the blinds and opens under the gun', () => {
       // No claims at all: the host proxies every seat from the first hand.
       const { snapshot } = service.startHand(GAME_ID);
-      const hand = snapshot.currentHand!;
+      const hand = asPoker(snapshot).currentHand!;
 
       expect(snapshot.status).toBe('RUNNING');
       expect(hand.handNumber).toBe(1);
@@ -227,8 +241,8 @@ describe('GameRuntimeService', () => {
       play(PokerAction.Fold, 1);
 
       const { snapshot } = service.startHand(GAME_ID);
-      expect(snapshot.currentHand!.handNumber).toBe(2);
-      expect(snapshot.currentHand!.dealerParticipant).toBe(seatAt(1));
+      expect(asPoker(snapshot).currentHand!.handNumber).toBe(2);
+      expect(asPoker(snapshot).currentHand!.dealerParticipant).toBe(seatAt(1));
     });
 
     it('refuses to deal over a hand that is still being played', () => {
@@ -249,7 +263,9 @@ describe('GameRuntimeService', () => {
       // Seat 2 posted the big blind and is the only seat left in.
       expect(final.resolution?.reason).toBe(HandEndReason.Uncontested);
       expect(final.resolution?.winners).toEqual([seatAt(2)]);
-      expect(final.snapshot.currentHand?.status).toBe(HandStatus.Settled);
+      expect(asPoker(final.snapshot).currentHand?.status).toBe(
+        HandStatus.Settled,
+      );
 
       const balances = Object.fromEntries(
         final.snapshot.participants.map((p) => [p.seatIndex, p.balance]),
@@ -266,7 +282,7 @@ describe('GameRuntimeService', () => {
       // The big blind still gets its option, and taking it closes the street.
       const { snapshot } = play(PokerAction.Check, 2);
 
-      const hand = snapshot.currentHand!;
+      const hand = asPoker(snapshot).currentHand!;
       expect(hand.street).toBe(Street.Flop);
       expect(potOf(snapshot)).toBe(40);
       expect(hand.betting.currentBet).toBe(0);
@@ -280,14 +296,14 @@ describe('GameRuntimeService', () => {
       play(PokerAction.Call, 3, 10);
       const raised = play(PokerAction.Raise, 0, 30);
 
-      expect(raised.snapshot.currentHand!.betting.currentBet).toBe(30);
-      expect(raised.snapshot.currentHand!.betting.minRaiseTo).toBe(50);
+      expect(asPoker(raised.snapshot).currentHand!.betting.currentBet).toBe(30);
+      expect(asPoker(raised.snapshot).currentHand!.betting.minRaiseTo).toBe(50);
       // Seat 3 called ten and now owes an answer to the raise again.
       play(PokerAction.Call, 1, 30);
       play(PokerAction.Call, 2, 30);
       const { snapshot } = play(PokerAction.Call, 3, 30);
 
-      expect(snapshot.currentHand!.street).toBe(Street.Flop);
+      expect(asPoker(snapshot).currentHand!.street).toBe(Street.Flop);
       expect(potOf(snapshot)).toBe(120);
     });
 
@@ -306,14 +322,14 @@ describe('GameRuntimeService', () => {
       }
 
       const snapshot = service.snapshot(GAME_ID);
-      expect(snapshot.currentHand!.status).toBe(HandStatus.Showdown);
-      expect(snapshot.currentHand!.betting.legalActions).toEqual([]);
+      expect(asPoker(snapshot).currentHand!.status).toBe(HandStatus.Showdown);
+      expect(asPoker(snapshot).currentHand!.betting.legalActions).toEqual([]);
 
       const { resolution, snapshot: settled } = service.declareWinners(
         GAME_ID,
         [
           {
-            potId: snapshot.currentHand!.pots[0].id,
+            potId: asPoker(snapshot).currentHand!.pots[0].id,
             winnerParticipantIds: [seatAt(3)],
           },
         ],
@@ -331,7 +347,7 @@ describe('GameRuntimeService', () => {
       expect(() =>
         service.declareWinners(GAME_ID, [
           {
-            potId: snapshot.currentHand!.pots[0].id,
+            potId: asPoker(snapshot).currentHand!.pots[0].id,
             winnerParticipantIds: [seatAt(3)],
           },
         ]),

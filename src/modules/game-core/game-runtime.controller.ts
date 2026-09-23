@@ -200,6 +200,24 @@ export class GameRuntimeController {
     return this.rooms.startHand(uuid, participantId);
   }
 
+  /**
+   * Host only, free mode: opens the next round.
+   *
+   * A separate route from `/hands` rather than one neutral "next deal": the two
+   * are different objects with different lifecycles, and a route that answered
+   * both would leave every client checking the mode to know what it just got.
+   */
+  @Post(':uuid/rounds')
+  @HttpCode(HttpStatus.CREATED)
+  @ZodSerializerDto(DTOs.StartRoundResponse)
+  public startRound(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.startRound(uuid, participantId);
+  }
+
   @Post(':uuid/actions')
   @HttpCode(HttpStatus.OK)
   @ZodSerializerDto(DTOs.SubmitActionResponse)
@@ -227,6 +245,27 @@ export class GameRuntimeController {
   ) {
     const { participantId } = this.tokens.verify(token, uuid);
     return this.rooms.declareWinners(uuid, participantId, data.awards);
+  }
+
+  /**
+   * Host only, free mode: settles the open round on the winners the table
+   * names. The free runtime evaluates one automatic end condition and no more,
+   * so this is how nearly every round of it ends.
+   */
+  @Post(':uuid/rounds/current/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.ResolveRoundResponse)
+  public resolveRound(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() data: DTOs.ResolveRoundData,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.resolveRound(
+      uuid,
+      participantId,
+      data.winnerParticipantIds,
+    );
   }
 
   @Delete(':uuid')

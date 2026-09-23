@@ -26,9 +26,11 @@ import {
 import {
   addSeatDataSchema,
   attachSocketDataSchema,
+  resolveRoundDataSchema,
   declareWinnersDataSchema,
   submitActionDataSchema,
   updateSeatDataSchema,
+import { GameMode } from '@tokenizer/shared/types';
 } from '@tokenizer/shared/schemas';
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
@@ -179,6 +181,25 @@ export class GameRuntimeGateway
    * table is told about the settlement rather than left showing a hand nobody
    * can act on.
    */
+  /**
+   * Host only, free mode: opens the next round.
+   *
+   * Broadcast on its own event rather than the hand's. The two lifecycles look
+   * alike from here and are not the same thing at all — a round carries no
+   * button, no streets and no showdown — and a client that had to read the
+   * snapshot's mode to find out which one it just received would be doing the
+   * work this event name already does.
+   */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.START_ROUND)
+  startRound(@ConnectedSocket() client: Socket) {
+    return this.guard(client, async () => {
+      const { gameUuid, participantId } = this.boundState(client);
+      const snapshot = await this.rooms.startRound(gameUuid, participantId);
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_STARTED, snapshot);
+      return snapshot;
+    });
+  }
+
   @SubscribeMessage(GAME_CLIENT_MESSAGES.START_HAND)
   startHand(@ConnectedSocket() client: Socket) {
     return this.guard(client, async () => {
@@ -189,10 +210,15 @@ export class GameRuntimeGateway
       );
       this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_STARTED, snapshot);
       if (resolution) {
-        this.broadcast(gameUuid, GAME_SERVER_EVENTS.HAND_SETTLED, {
-          ...snapshot,
-          resolution,
-        });
+        // Which settlement event this is follows from the resolution itself:
+        // it is discriminated on the same `mode` the snapshot is.
+        this.broadcast(
+          gameUuid,
+          resolution.mode === GameMode.Poker
+            ? GAME_SERVER_EVENTS.HAND_SETTLED
+            : GAME_SERVER_EVENTS.ROUND_RESOLVED,
+          { ...snapshot, resolution },
+        );
       }
       return { snapshot, resolution };
     });
@@ -223,6 +249,28 @@ export class GameRuntimeGateway
   /** Host only: settles the showdown from the table's own verdict. */
   @SubscribeMessage(GAME_CLIENT_MESSAGES.DECLARE_WINNERS)
   declareWinners(
+  /** Host only, free mode: settles the round on the winners the table names. */
+  @SubscribeMessage(GAME_CLIENT_MESSAGES.RESOLVE)
+  resolveRound(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.guard(client, async () => {
+      const data = parsePayload(resolveRoundDataSchema, payload ?? {});
+      const { gameUuid, participantId } = this.boundState(client);
+      const { snapshot, resolution } = await this.rooms.resolveRound(
+        gameUuid,
+        participantId,
+        data.winnerParticipantIds,
+      );
+      this.broadcast(gameUuid, GAME_SERVER_EVENTS.ROUND_RESOLVED, {
+        ...snapshot,
+        resolution,
+      });
+      return { snapshot, resolution };
+    });
+  }
+
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: unknown,
   ) {

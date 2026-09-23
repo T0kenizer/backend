@@ -1,15 +1,23 @@
+import type { Action } from '@modules/game-core/free/action';
+import type { FreeSession } from '@modules/game-core/free/free-session';
+import type { Pot } from '@modules/game-core/free/pot';
+import type { Round } from '@modules/game-core/free/round';
 import type { Hand } from '@modules/game-core/poker/hand';
 import type { HandEvent } from '@modules/game-core/poker/hand-event';
+import type { PokerSession } from '@modules/game-core/poker/poker-session';
 import type { PotLayer } from '@modules/game-core/poker/pots';
 import type { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
-import type {
-  GameSnapshot,
-  HandEventSnapshot,
-  HandSnapshot,
-  ParticipantSnapshot,
-  PotSnapshot,
-  TableStakes,
+import {
+  GameMode,
+  type ActionSnapshot,
+  type GameSnapshot,
+  type HandEventSnapshot,
+  type HandSnapshot,
+  type ParticipantSnapshot,
+  type PotSnapshot,
+  type RoundSnapshot,
+  type TableStakes,
 } from '@tokenizer/shared/types';
 
 /**
@@ -49,7 +57,7 @@ function serializeParticipant(p: Participant): RawParticipantSnapshot {
   };
 }
 
-function serializePot(pot: PotLayer): PotSnapshot {
+function serializePotLayer(pot: PotLayer): PotSnapshot {
   return {
     id: pot.id,
     amount: pot.amount,
@@ -78,7 +86,7 @@ function serializeHand(hand: Hand): HandSnapshot {
     dealerParticipant: hand.order[hand.dealerIndex].id,
     smallBlindParticipant: hand.smallBlindId,
     bigBlindParticipant: hand.bigBlindId,
-    pots: hand.pots().map(serializePot),
+    pots: hand.pots().map(serializePotLayer),
     betting: {
       activeParticipant: hand.betting.actor?.id ?? null,
       currentBet: hand.betting.currentBet,
@@ -91,12 +99,62 @@ function serializeHand(hand: Hand): HandSnapshot {
 }
 
 /**
+ * The free runtime pools everything into one pot — `PotMode.Single` is the only
+ * mode it settles — so nothing it produces is ever a side pot. The flag is
+ * carried anyway: it belongs to the pot shape both modes share, and answering
+ * it here is cheaper than asking every client to know which mode has side
+ * pots.
+ */
+function serializeFreePot(pot: Pot): PotSnapshot {
+  return {
+    id: pot.id,
+    amount: pot.amount,
+    eligibleParticipants: [...pot.eligibleParticipants],
+    isSidePot: false,
+  };
+}
+
+function serializeAction(action: Action): ActionSnapshot {
+  return {
+    id: action.id,
+    participantId: action.participantId,
+    definitionId: action.definitionId,
+    amount: action.amount,
+    timestamp: action.timestamp.toISOString(),
+  };
+}
+
+function serializeRound(round: Round): RoundSnapshot {
+  return {
+    id: round.id,
+    status: round.status,
+    pots: round.pots.map(serializeFreePot),
+    turn: {
+      activeParticipant: round.turnState.activeParticipant,
+      interruptionOpen: round.turnState.interruptionOpen,
+      pendingClaims: round.turnState.pendingClaims.length,
+      legalActions: round.turnState.computeLegalActions(),
+    },
+    actionLog: round.actionLog.map(serializeAction),
+  };
+}
+
+/**
+ * `Omit` over a union collapses it into one member, which would quietly erase
+ * the very discriminator the snapshot is built around. Distributing it keeps
+ * one runtime shape per mode.
+ */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+/**
  * The runtime aggregate knows nothing of the join code (an ephemeral Redis
  * concern), the session name (a DB column), whether another seat may be opened
  * (half a plan question), or the resolved participant fields; callers finish
  * all of them when the snapshot crosses into REST/WebSocket responses.
  */
-export type RuntimeSnapshot = Omit<
+export type RuntimeSnapshot = DistributiveOmit<
   GameSnapshot,
   'joinCode' | 'name' | 'participants' | 'canAddSeat'
 > & {
@@ -107,22 +165,37 @@ export function serializeSession(
   id: string,
   session: GameSession,
 ): RuntimeSnapshot {
-  const { rules } = session.config;
-  const stakes: TableStakes = {
-    blinds: rules.blinds,
-    ante: rules.ante,
-    bettingStructure: rules.bettingStructure,
-  };
+  const participants = session.seats.map(serializeParticipant);
 
+  if (session.config.mode === GameMode.Poker) {
+    const poker = session as PokerSession;
+    const { rules } = poker.config;
+    const stakes: TableStakes = {
+      blinds: rules.blinds,
+      ante: rules.ante,
+      bettingStructure: rules.bettingStructure,
+    };
+
+    return {
+      id,
+      mode: GameMode.Poker,
+      status: poker.status,
+      stakes,
+      chipModel: rules.chipModel,
+      dealsPlayed: poker.dealsPlayed,
+      participants,
+      currentHand: poker.currentHand ? serializeHand(poker.currentHand) : null,
+    };
+  }
+
+  const free = session as FreeSession;
   return {
     id,
-    mode: session.config.mode,
-    status: session.status,
-    stakes,
-    chipModel: rules.chipModel,
-    participants: session.seats.map(serializeParticipant),
-    currentHand: session.currentHand
-      ? serializeHand(session.currentHand)
-      : null,
+    mode: GameMode.Free,
+    status: free.status,
+    chipModel: free.config.economy.chipModel,
+    dealsPlayed: free.dealsPlayed,
+    participants,
+    currentRound: free.currentRound ? serializeRound(free.currentRound) : null,
   };
 }
