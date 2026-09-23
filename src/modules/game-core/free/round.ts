@@ -137,16 +137,9 @@ export class Round {
     this.actionLog.push(action);
 
     if (def.grantsInterruption) {
-      const opened = this.turnState.openInterruptionWindow(() => {
-        // Auto-resolve on window expiry if no claims arrived
-        if (this.turnState.pendingClaims.length > 0) {
-          this.turnState.resolveClaims();
-        } else {
-          this.turnState.advance();
-        }
-      });
-      // Regimes without interruptions rotate normally.
-      if (!opened) this.turnState.advance();
+      // The window stays open until a claim is resolved or the round settles;
+      // regimes without interruptions rotate normally.
+      if (!this.turnState.openInterruptionWindow()) this.turnState.advance();
     } else {
       this.turnState.advance();
     }
