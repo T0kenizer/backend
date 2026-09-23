@@ -8,6 +8,8 @@ import { GameMode, ParticipantRole } from '@tokenizer/shared/types';
 
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
 const OWNER_UUID = '22222222-2222-4222-8222-222222222222';
+/** The caller always names the session — the service invents no fallback. */
+const GAME_NAME = "Owner's game";
 
 describe('GameSessionsService', () => {
   let em: { persist: jest.Mock; flush: jest.Mock };
@@ -35,9 +37,11 @@ describe('GameSessionsService', () => {
     const { session, participants } = await service.create(
       owner,
       defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
     );
 
     expect(session.owner).toBe(owner);
+    expect(session.name).toBe(GAME_NAME);
     expect(participants).toHaveLength(4);
     // 1 session + 4 seats persisted in a single flush
     expect(em.persist).toHaveBeenCalledTimes(5);
@@ -66,6 +70,7 @@ describe('GameSessionsService', () => {
     const { participants } = await service.create(
       owner,
       defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
     );
 
     const claimed = await service.claim(participants[1], 'bob', 'Bob');
@@ -81,6 +86,7 @@ describe('GameSessionsService', () => {
     const { participants } = await service.create(
       owner,
       defaultConfigFor(GameMode.Poker),
+      GAME_NAME,
     );
 
     const claimed = await service.claim(participants[1], 'bob');

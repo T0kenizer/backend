@@ -31,18 +31,22 @@ export class GameSessionsService {
    * with no override (`displayName` stays null — the config's per-seat name is
    * a fallback resolved at snapshot time, not copied into the row). Seat 0 is
    * the HOST seat; the owner claims it as part of creating the game.
+   *
+   * `name` is required and stored as given: a client that shows the host what
+   * the table will be called is the one that must decide what an unnamed table
+   * is called, or the two answers drift. The schema rejects a missing one.
    */
   public async create(
     owner: User,
     config: GameConfig,
-    name?: string,
+    name: string,
   ): Promise<{ session: GameSession; participants: GameParticipant[] }> {
     const em = this.gameSessionsRepository.getEntityManager();
 
     const session = new GameSession();
     session.owner = owner;
     session.config = config;
-    session.name = name ?? `${owner.displayName ?? owner.username}'s game`;
+    session.name = name;
     session.status = GameSessionStatus.Lobby;
     em.persist(session);
 

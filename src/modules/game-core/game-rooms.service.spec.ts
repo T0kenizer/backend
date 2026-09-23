@@ -42,6 +42,8 @@ jest.mock('@modules/users/users.service', () => ({
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
 const OWNER_UUID = '22222222-2222-4222-8222-222222222222';
 const JOIN_CODE = '481920';
+/** The API requires a name, so every creation in here carries one. */
+const GAME_NAME = "Owner's game";
 
 /** Persisted seat rows as `GameSessionsService` creates them: all unclaimed. */
 function seatRows(): GameParticipant[] {
@@ -63,7 +65,7 @@ function persistedSession(
 ): GameSession {
   const session = {
     uuid: GAME_UUID,
-    name: "Owner's game",
+    name: GAME_NAME,
     status: GameSessionStatus.Lobby,
     closedAt: null as Nullable<Date>,
     lastActivityAt: new Date(),
@@ -226,6 +228,7 @@ describe('GameRoomsService', () => {
   describe('createGame', () => {
     it('mints a code, seats the owner in the HOST seat and issues their token', async () => {
       const result = await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
         mode: GameMode.Poker,
       });
 
@@ -244,7 +247,10 @@ describe('GameRoomsService', () => {
 
     it('refuses to create a game for anything but a real user uuid', async () => {
       await expect(
-        service.createGame('not-a-uuid', { mode: GameMode.Poker }),
+        service.createGame('not-a-uuid', {
+          name: GAME_NAME,
+          mode: GameMode.Poker,
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -268,6 +274,7 @@ describe('GameRoomsService', () => {
       it('lets a free user set up the mode they are allowed to open', async () => {
         await expect(
           service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
             mode: GameMode.Poker,
             config: defaultConfigFor(GameMode.Poker),
           }),
@@ -276,7 +283,10 @@ describe('GameRoomsService', () => {
 
       it('lets a free user open the mode on its own defaults', async () => {
         await expect(
-          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
+          service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
+            mode: GameMode.Poker,
+          }),
         ).resolves.toBeDefined();
       });
 
@@ -291,6 +301,7 @@ describe('GameRoomsService', () => {
 
         await expect(
           service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
             mode: GameMode.Poker,
             config: configWithSeats(12),
           }),
@@ -308,6 +319,7 @@ describe('GameRoomsService', () => {
 
         await expect(
           service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
             mode: GameMode.Poker,
             config: configWithSeats(13),
           }),
@@ -318,7 +330,10 @@ describe('GameRoomsService', () => {
     describe('modes', () => {
       it('lets a free user open a table in a mode their plan includes', async () => {
         await expect(
-          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
+          service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
+            mode: GameMode.Poker,
+          }),
         ).resolves.toBeDefined();
       });
 
@@ -332,13 +347,19 @@ describe('GameRoomsService', () => {
         });
 
         await expect(
-          service.createGame(OWNER_UUID, { mode: GameMode.Poker }),
+          service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
+            mode: GameMode.Poker,
+          }),
         ).rejects.toThrow(ForbiddenException);
       });
 
       it('refuses the free table to a plan that does not pay for it', async () => {
         await expect(
-          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+          service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
+            mode: GameMode.Free,
+          }),
         ).rejects.toThrow(ForbiddenException);
       });
 
@@ -352,7 +373,10 @@ describe('GameRoomsService', () => {
         });
 
         await expect(
-          service.createGame(OWNER_UUID, { mode: GameMode.Free }),
+          service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
+            mode: GameMode.Free,
+          }),
         ).resolves.toBeDefined();
       });
 
@@ -382,6 +406,7 @@ describe('GameRoomsService', () => {
       it("lets a free user override the mode's seat count, within their cap", async () => {
         await expect(
           service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
             mode: GameMode.Poker,
             seats: seatsOf(2),
           }),
@@ -391,6 +416,7 @@ describe('GameRoomsService', () => {
       it('rejects a free user overriding the seats beyond their cap', async () => {
         await expect(
           service.createGame(OWNER_UUID, {
+            name: GAME_NAME,
             mode: GameMode.Poker,
             seats: seatsOf(5),
           }),
@@ -401,7 +427,10 @@ describe('GameRoomsService', () => {
 
   describe('joinGame', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
+      await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
+        mode: GameMode.Poker,
+      });
     });
 
     it('seats a guest, issues a token, and never puts them in the host seat', async () => {
@@ -537,6 +566,7 @@ describe('GameRoomsService', () => {
 
     beforeEach(async () => {
       const host = await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
         mode: GameMode.Poker,
       });
       hostToken = host.token;
@@ -631,7 +661,10 @@ describe('GameRoomsService', () => {
 
   describe('connection lifecycle', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
+      await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
+        mode: GameMode.Poker,
+      });
     });
 
     it('starts both clocks when the last socket of a room drops', async () => {
@@ -681,7 +714,10 @@ describe('GameRoomsService', () => {
 
   describe('abandonGame', () => {
     beforeEach(async () => {
-      await service.createGame(OWNER_UUID, { mode: GameMode.Poker });
+      await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
+        mode: GameMode.Poker,
+      });
     });
 
     it('marks the session abandoned and tears the room down', async () => {
@@ -755,7 +791,7 @@ describe('GameRoomsService', () => {
       const view = await service.publicRoomView(GAME_UUID);
 
       expect(view).toEqual({
-        name: "Owner's game",
+        name: GAME_NAME,
         mode: GameMode.Poker,
         status: GameSessionStatus.Lobby,
         playerCount: 1,
@@ -768,6 +804,7 @@ describe('GameRoomsService', () => {
   describe('snapshots', () => {
     it('never carries the identity holding a seat', async () => {
       const { snapshot } = await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
         mode: GameMode.Poker,
       });
 
@@ -784,7 +821,7 @@ describe('GameRoomsService', () => {
     it('marks who is connected without touching who holds the seat', async () => {
       const { snapshot: before, participantId } = await service.createGame(
         OWNER_UUID,
-        { mode: GameMode.Poker },
+        { name: GAME_NAME, mode: GameMode.Poker },
       );
       expect(
         before.participants.find((p) => p.id === participantId)?.connected,

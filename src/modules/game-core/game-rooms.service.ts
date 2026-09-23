@@ -47,7 +47,6 @@ import {
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
-/** What a successful join hands back to the client. */
 export interface JoinResult {
   snapshot: GameSnapshot;
   token: string;
@@ -77,8 +76,6 @@ export interface JoinResult {
 export class GameRoomsService {
   private readonly logger = new Logger(GameRoomsService.name);
 
-  // `orm` backs @CreateRequestContext(): entry points outside the HTTP
-  // request scope (WebSocket gateway, queue consumer) get a fresh DB context.
   constructor(
     private readonly orm: MikroORM,
     private readonly gameSessionsService: GameSessionsService,
