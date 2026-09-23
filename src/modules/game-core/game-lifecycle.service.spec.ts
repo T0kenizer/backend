@@ -109,3 +109,29 @@ describe('GameLifecycleService', () => {
     expect(Constants.PLAYER_DISCONNECT_GRACE_MS).toBeLessThanOrEqual(30_000);
   });
 });
+
+/**
+ * BullMQ rejects a custom job id containing a colon, and it does so from inside
+ * `queue.add` — which means a bad id does not break a test or raise an alert,
+ * it just quietly leaves the deferred decision unarmed. Every id the module
+ * mints is therefore checked here rather than trusted.
+ */
+describe('lifecycle job ids', () => {
+  const GAME = '11111111-1111-4111-8111-111111111111';
+  const SEAT = '22222222-2222-4222-8222-222222222222';
+
+  it.each([
+    ['close-empty-room', Types.closeEmptyRoomJobId(GAME)],
+    ['teardown-closed-room', Types.teardownClosedRoomJobId(GAME)],
+    ['player-disconnected', Types.playerDisconnectedJobId(GAME, SEAT)],
+  ])('mints %s without a colon BullMQ would refuse', (_name, jobId) => {
+    expect(jobId).not.toContain(':');
+  });
+
+  it('keeps one id per room and per seat', () => {
+    expect(Types.closeEmptyRoomJobId(GAME)).not.toBe(
+      Types.teardownClosedRoomJobId(GAME),
+    );
+    expect(Types.playerDisconnectedJobId(GAME, SEAT)).toContain(SEAT);
+  });
+});

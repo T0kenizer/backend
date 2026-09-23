@@ -46,14 +46,26 @@ export type GameLifecycleQueue = Queue<
 /**
  * Job ids are derived, never random, so a job can be cancelled by name alone
  * and a second scheduling replaces the first instead of stacking onto it.
+ *
+ * Separated by `--`, never by a colon: BullMQ refuses a custom id containing
+ * one ("Custom Id cannot contain :") because that is its own Redis key
+ * separator. A colon here does not fail loudly — `queue.add` throws inside
+ * whatever was scheduling it, and the deferred decision is simply never armed —
+ * so the separator is asserted in the spec beside these.
  */
+const SEPARATOR = '--';
+
 export function closeEmptyRoomJobId(gameUuid: string): string {
-  return `close-empty-room:${gameUuid}`;
+  return `close-empty-room${SEPARATOR}${gameUuid}`;
+}
+
+export function teardownClosedRoomJobId(gameUuid: string): string {
+  return `teardown-closed-room${SEPARATOR}${gameUuid}`;
 }
 
 export function playerDisconnectedJobId(
   gameUuid: string,
   participantId: string,
 ): string {
-  return `player-disconnected:${gameUuid}:${participantId}`;
+  return `player-disconnected${SEPARATOR}${gameUuid}${SEPARATOR}${participantId}`;
 }
