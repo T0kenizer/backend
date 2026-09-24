@@ -36,6 +36,18 @@ function connect(
   server.sockets.sockets.set(socketId, { data: { gameUuid, participantId } });
 }
 
+/** The same, for a watcher: in the room, holding no seat. */
+function watch(
+  server: ReturnType<typeof fakeServer>,
+  socketId: string,
+  gameUuid = GAME_UUID,
+) {
+  const room = gameRoom(gameUuid);
+  if (!server.rooms.has(room)) server.rooms.set(room, new Set());
+  server.rooms.get(room)!.add(socketId);
+  server.sockets.sockets.set(socketId, { data: { gameUuid } });
+}
+
 describe('GamePresenceService', () => {
   let service: GamePresenceService;
   let server: ReturnType<typeof fakeServer>;
@@ -64,6 +76,25 @@ describe('GamePresenceService', () => {
 
     expect(service.roomSize(GAME_UUID)).toBe(2);
     expect(service.isRoomEmpty(GAME_UUID)).toBe(false);
+  });
+
+  it('calls a room the players have left empty, spectators or not', () => {
+    // A television left on in an empty room must not hold the session open:
+    // the idle sweep and the room release both ask this question.
+    watch(server, 'socket-tv');
+
+    expect(service.roomSize(GAME_UUID)).toBe(1);
+    expect(service.isRoomEmpty(GAME_UUID)).toBe(true);
+    expect(service.spectatorCount(GAME_UUID)).toBe(1);
+  });
+
+  it('leaves the seated count alone when watchers join', () => {
+    connect(server, 'socket-1', SEAT_A);
+    watch(server, 'socket-tv');
+
+    expect([...service.connectedParticipants(GAME_UUID)]).toEqual([SEAT_A]);
+    expect(service.isRoomEmpty(GAME_UUID)).toBe(false);
+    expect(service.spectatorCount(GAME_UUID)).toBe(1);
   });
 
   it('deduplicates a player holding one seat across several tabs', () => {
@@ -117,5 +148,25 @@ describe('GamePresenceService', () => {
       gameUuid: GAME_UUID,
       participantId: SEAT_A,
     });
+  });
+
+  it('binds a spectator to the room without a seat to act as', async () => {
+    const client = { data: {}, join: jest.fn() } as unknown as Socket;
+
+    await service.spectate(client, GAME_UUID);
+
+    expect(client.join).toHaveBeenCalledWith(gameRoom(GAME_UUID));
+    expect(service.stateOf(client)).toEqual({ gameUuid: GAME_UUID });
+  });
+
+  it('strips the seat from a socket that stops playing and starts watching', async () => {
+    const client = { data: {}, join: jest.fn() } as unknown as Socket;
+
+    await service.attach(client, GAME_UUID, SEAT_A);
+    await service.spectate(client, GAME_UUID);
+
+    // Left behind, `participantId` would let the gateway act as that seat on
+    // behalf of a socket that has given it up.
+    expect(service.stateOf(client).participantId).toBeUndefined();
   });
 });
