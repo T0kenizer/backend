@@ -6,6 +6,8 @@ import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -105,19 +107,6 @@ export class GameRuntimeGateway
     });
   }
 
-  /**
-   * Watch a table without being at it.
-   *
-   * Deliberately unauthenticated: a spectator is whoever is in the room looking
-   * at the screen, and asking them for a token would mean issuing one, which
-   * would mean seating them. So the only thing this proves is that the room is
-   * open — {@link GameRoomsService.ensureRoomOpen} throws otherwise — and the
-   * only thing it grants is the broadcast feed.
-   *
-   * Nothing is announced when a spectator arrives. Nobody joined; the players
-   * have no reason to be told, and the seats they see must not move because a
-   * television was switched on.
-   */
   @SubscribeMessage(GameClientMessage.Spectate)
   spectate(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
     return this.guard(client, async () => {
@@ -285,14 +274,18 @@ export class GameRuntimeGateway
   private async guard<T>(
     client: Socket,
     fn: () => T | Promise<T>,
-  ): Promise<T | { error: string }> {
+  ): Promise<T | { error: string; status: number }> {
     try {
       return await fn();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const status =
+        err instanceof HttpException
+          ? err.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
       this.logger.warn(`Gateway error for ${client.id}: ${message}`);
-      client.emit(GameServerEvent.Error, { error: message });
-      return { error: message };
+      client.emit(GameServerEvent.Error, { error: message, status });
+      return { error: message, status };
     }
   }
 }
