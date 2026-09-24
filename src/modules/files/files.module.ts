@@ -5,6 +5,7 @@ import { FilesConsumer } from '@modules/files/files.consumer';
 import { FilesController } from '@modules/files/files.controller';
 import { FilesService } from '@modules/files/files.service';
 import { FirebaseModule } from '@modules/firebase/firebase.module';
+import { RedisModule } from '@modules/redis/redis.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
@@ -22,6 +23,7 @@ import { Module } from '@nestjs/common';
       },
     }),
     FirebaseModule,
+    RedisModule,
   ],
 })
 export class FilesModule {}

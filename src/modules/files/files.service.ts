@@ -5,6 +5,7 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import * as Constants from '@modules/files/files.constants';
 import * as Types from '@modules/files/files.types';
 import { FirebaseService } from '@modules/firebase/firebase.service';
+import { RedisCacheService } from '@modules/redis/services/redis-cache.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
@@ -19,6 +20,10 @@ import sharp from 'sharp';
 // Loads the `Express.Multer` global augmentation shipped by @types/multer.
 import 'multer';
 
+function signedUrlKey(fileUuid: string): string {
+  return `signed_url:${fileUuid}`;
+}
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
@@ -29,11 +34,12 @@ export class FilesService {
     @InjectQueue(Constants.FILES_QUEUE)
     private readonly filesQueue: Types.FilesQueue,
     private readonly firebaseService: FirebaseService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   public async create(
     upload: Express.Multer.File,
-    createdBy: User,
+    createdBy?: User,
     mode: FileUploadMode = FileUploadMode.Sync,
   ): Promise<File> {
     const em = this.filesRepository.getEntityManager();
@@ -165,5 +171,42 @@ export class FilesService {
       });
 
     return url;
+  }
+
+  public async buildCachedSignedUrl(file: File): Promise<string> {
+    const cached = await this.readSignedUrl(file.uuid);
+    if (cached) return cached;
+
+    const url = await this.buildSignedUrl(file);
+
+    return this.rememberSignedUrl(file.uuid, url);
+  }
+
+  private async readSignedUrl(fileUuid: string): Promise<Nullable<string>> {
+    try {
+      return await this.redisCacheService.client.get(signedUrlKey(fileUuid));
+    } catch (error) {
+      this.logger.warn(`Signed URL cache read failed: ${String(error)}`);
+      return null;
+    }
+  }
+
+  private async rememberSignedUrl(
+    fileUuid: string,
+    url: string,
+  ): Promise<string> {
+    try {
+      const claimed = await this.redisCacheService.client.set(
+        signedUrlKey(fileUuid),
+        url,
+        { NX: true, PX: Constants.SIGNED_URL_CACHE_TTL_MS },
+      );
+      if (claimed) return url;
+
+      return (await this.readSignedUrl(fileUuid)) ?? url;
+    } catch (error) {
+      this.logger.warn(`Signed URL cache write failed: ${String(error)}`);
+      return url;
+    }
   }
 }
