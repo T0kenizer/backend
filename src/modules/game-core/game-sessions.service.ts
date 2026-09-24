@@ -1,7 +1,8 @@
+import type { File } from '@entities/file.entity';
 import { GameParticipant } from '@entities/game/game-participant.entity';
 import { GameSession } from '@entities/game/game-session.entity';
 import { User } from '@entities/user.entity';
-import { EntityRepository } from '@mikro-orm/core';
+import { EntityRepository, ref } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
@@ -87,7 +88,7 @@ export class GameSessionsService {
 
     const session = await this.gameSessionsRepository.findOne(
       { uuid },
-      { populate: ['participants', 'owner'] },
+      { populate: ['participants.avatar', 'owner'] },
     );
 
     if (!session) throw new NotFoundException('Game session not found');
@@ -113,6 +114,22 @@ export class GameSessionsService {
     displayName?: Nullable<string>,
   ): Promise<GameParticipant> {
     if (displayName !== undefined) participant.displayName = displayName;
+    await this.gameSessionsRepository.getEntityManager().flush();
+
+    return participant;
+  }
+
+  public async setAvatar(
+    participant: GameParticipant,
+    avatar: Nullable<File>,
+  ): Promise<GameParticipant> {
+    const previous = participant.avatar
+      ? await participant.avatar.load()
+      : null;
+
+    participant.avatar = avatar ? ref(avatar) : undefined;
+    if (previous && previous.uuid !== avatar?.uuid)
+      previous.deletedAt = new Date();
     await this.gameSessionsRepository.getEntityManager().flush();
 
     return participant;

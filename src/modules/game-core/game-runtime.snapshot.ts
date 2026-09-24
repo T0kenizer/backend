@@ -22,7 +22,7 @@ import {
 
 export interface RawParticipantSnapshot extends Omit<
   ParticipantSnapshot,
-  'displayName' | 'photoUrl' | 'connected' | 'claimed'
+  'displayName' | 'avatarUrl' | 'connected' | 'claimed'
 > {
   displayNameOverride: Nullable<string>;
   controller: Nullable<string>;

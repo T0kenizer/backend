@@ -3,6 +3,7 @@ import { EntityRepository } from '@mikro-orm/core';
 import { FilesService } from '@modules/files/files.service';
 import * as Types from '@modules/files/files.types';
 import { FirebaseService } from '@modules/firebase/firebase.service';
+import { RedisCacheService } from '@modules/redis/services/redis-cache.service';
 import { BadRequestException } from '@nestjs/common';
 import sharp from 'sharp';
 
@@ -18,6 +19,7 @@ function makeService() {
     {} as EntityRepository<File>,
     {} as Types.FilesQueue,
     {} as FirebaseService,
+    {} as RedisCacheService,
   );
 }
 

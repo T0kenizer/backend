@@ -1,7 +1,9 @@
+import type { File } from '@entities/file.entity';
 import type { GameParticipant } from '@entities/game/game-participant.entity';
 import type { GameSession } from '@entities/game/game-session.entity';
 import type { MikroORM } from '@mikro-orm/core';
 import type { ConfigService } from '@modules/config/config.service';
+import type { FilesService } from '@modules/files/files.service';
 import type { GameCodesService } from '@modules/game-core/game-codes.service';
 import type { GameLifecycleService } from '@modules/game-core/game-lifecycle.service';
 import { defaultConfigFor } from '@modules/game-core/game-modes';
@@ -20,6 +22,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import {
   GameMode,
+  GameServerEvent,
   GameSessionStatus,
   ParticipantRole,
   Plan,
@@ -37,6 +40,9 @@ jest.mock('@mikro-orm/core', () => ({
 // whole files module (and sharp's native bindings) into the test runtime.
 jest.mock('@modules/users/users.service', () => ({
   UsersService: class {},
+}));
+jest.mock('@modules/files/files.service', () => ({
+  FilesService: class {},
 }));
 
 const GAME_UUID = '11111111-1111-4111-8111-111111111111';
@@ -99,8 +105,14 @@ describe('GameRoomsService', () => {
     setStatus: jest.Mock;
     close: jest.Mock;
     addParticipant: jest.Mock;
+    setAvatar: jest.Mock;
   };
-  let users: { getUserByUuid: jest.Mock; findUserByUuid: jest.Mock };
+  let users: {
+    getUserByUuid: jest.Mock;
+    findUserByUuid: jest.Mock;
+    buildAvatarUrl: jest.Mock;
+  };
+  let files: { create: jest.Mock; buildCachedSignedUrl: jest.Mock };
   let codes: {
     issue: jest.Mock;
     resolve: jest.Mock;
@@ -174,6 +186,16 @@ describe('GameRoomsService', () => {
             return Promise.resolve(row);
           },
         ),
+      setAvatar: jest
+        .fn()
+        .mockImplementation((row: GameParticipant, avatar: Nullable<File>) => {
+          row.avatar = avatar
+            ? ({
+                load: () => Promise.resolve(avatar),
+              } as unknown as GameParticipant['avatar'])
+            : undefined;
+          return Promise.resolve(row);
+        }),
     };
     users = {
       getUserByUuid: jest.fn().mockResolvedValue({
@@ -184,6 +206,19 @@ describe('GameRoomsService', () => {
         plan: Plan.Free,
       }),
       findUserByUuid: jest.fn().mockResolvedValue(null),
+      buildAvatarUrl: jest.fn().mockResolvedValue(null),
+    };
+    files = {
+      create: jest
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve({ uuid: crypto.randomUUID() } as File),
+        ),
+      buildCachedSignedUrl: jest
+        .fn()
+        .mockImplementation((file: File) =>
+          Promise.resolve(`https://storage.test/${file.uuid}`),
+        ),
     };
     codes = {
       issue: jest.fn().mockResolvedValue(JOIN_CODE),
@@ -220,6 +255,7 @@ describe('GameRoomsService', () => {
       presence as unknown as GamePresenceService,
       lifecycle as unknown as GameLifecycleService,
       tokens,
+      files as unknown as FilesService,
     );
   });
 
@@ -873,6 +909,113 @@ describe('GameRoomsService', () => {
       const host = after.participants.find((p) => p.id === participantId);
       expect(host?.connected).toBe(true);
       expect(host?.claimed).toBe(true);
+    });
+  });
+  describe('setSeatAvatar', () => {
+    const upload = { originalname: 'me.jpg' } as Express.Multer.File;
+
+    beforeEach(async () => {
+      await service.createGame(OWNER_UUID, {
+        name: GAME_NAME,
+        mode: GameMode.Poker,
+      });
+    });
+
+    it('puts the avatar on the seat and tells the rest of the table', async () => {
+      const { participantId } = await service.joinGame(GAME_UUID, {
+        displayName: 'Bob',
+      });
+
+      const snapshot = await service.setSeatAvatar(
+        GAME_UUID,
+        participantId,
+        upload,
+      );
+
+      const bob = snapshot.participants.find((p) => p.id === participantId);
+      expect(bob?.avatarUrl).toMatch(/^https:\/\/storage\.test\//);
+      expect(presence.broadcast).toHaveBeenCalledWith(
+        GAME_UUID,
+        GameServerEvent.ParticipantUpdated,
+        snapshot,
+      );
+    });
+
+    it("stores an anonymous player's avatar without an account behind it", async () => {
+      const { participantId } = await service.joinGame(GAME_UUID, {});
+
+      await service.setSeatAvatar(GAME_UUID, participantId, upload);
+
+      expect(files.create).toHaveBeenCalledWith(upload, undefined);
+    });
+
+    it('credits the file to the account holding the seat', async () => {
+      const userUuid = '55555555-5555-4555-8555-555555555555';
+      const account = { uuid: userUuid, username: 'carol' };
+      users.findUserByUuid.mockResolvedValue(account);
+      const { participantId } = await service.joinGame(GAME_UUID, {}, userUuid);
+
+      await service.setSeatAvatar(GAME_UUID, participantId, upload);
+
+      expect(files.create).toHaveBeenCalledWith(upload, account);
+    });
+
+    it("shows the seat's avatar over the account's own", async () => {
+      const userUuid = '55555555-5555-4555-8555-555555555555';
+      users.findUserByUuid.mockResolvedValue({
+        uuid: userUuid,
+        username: 'carol',
+      });
+      users.buildAvatarUrl.mockResolvedValue('https://storage.test/avatar');
+      const { participantId } = await service.joinGame(GAME_UUID, {}, userUuid);
+
+      const snapshot = await service.setSeatAvatar(
+        GAME_UUID,
+        participantId,
+        upload,
+      );
+
+      const carol = snapshot.participants.find((p) => p.id === participantId);
+      expect(carol?.avatarUrl).not.toBe('https://storage.test/avatar');
+    });
+
+    it("falls back to the account avatar once the seat's is taken off", async () => {
+      const userUuid = '55555555-5555-4555-8555-555555555555';
+      users.findUserByUuid.mockResolvedValue({
+        uuid: userUuid,
+        username: 'carol',
+      });
+      users.buildAvatarUrl.mockResolvedValue('https://storage.test/avatar');
+      const { participantId } = await service.joinGame(GAME_UUID, {}, userUuid);
+      await service.setSeatAvatar(GAME_UUID, participantId, upload);
+
+      const snapshot = await service.setSeatAvatar(
+        GAME_UUID,
+        participantId,
+        null,
+      );
+
+      expect(files.create).toHaveBeenCalledTimes(1);
+      const carol = snapshot.participants.find((p) => p.id === participantId);
+      expect(carol?.avatarUrl).toBe('https://storage.test/avatar');
+    });
+
+    it('refuses a seat that is not at this table', async () => {
+      await expect(
+        service.setSeatAvatar(GAME_UUID, crypto.randomUUID(), upload),
+      ).rejects.toThrow(NotFoundException);
+      expect(files.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a closed session', async () => {
+      await service.closeGame(
+        GAME_UUID,
+        rows.find((r) => r.role === ParticipantRole.Host)!.uuid,
+      );
+
+      await expect(
+        service.setSeatAvatar(GAME_UUID, rows[0].uuid, upload),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

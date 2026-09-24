@@ -1,3 +1,4 @@
+import { parseUploadPipe } from '@modules/files/files.pipes';
 import * as Constants from '@modules/game-core/game-core.constants';
 import { GameQrService } from '@modules/game-core/game-qr.service';
 import { GameRoomsService } from '@modules/game-core/game-rooms.service';
@@ -18,14 +19,21 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Req,
   Res,
   StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
+import { MAX_FILE_SIZE_BYTES } from '@tokenizer/shared/constants/files.constants';
 import type { Request, Response } from 'express';
 import { ZodSerializerDto } from 'nestjs-zod';
+// Loads the `Express.Multer` global augmentation shipped by @types/multer.
+import 'multer';
 
 @Controller('games')
 export class GameRuntimeController {
@@ -134,6 +142,38 @@ export class GameRuntimeController {
   ) {
     const { participantId } = this.tokens.verify(token, uuid);
     return this.rooms.updateSeat(uuid, participantId, data);
+  }
+
+  @Put(':uuid/participants/current/avatar')
+  @Throttle({
+    default: {
+      limit: Constants.SEAT_AVATAR_LIMIT,
+      ttl: Constants.SEAT_AVATAR_TTL_MS,
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_BYTES } }),
+  )
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.UpdateSeatResponse)
+  public setSeatAvatar(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @UploadedFile(parseUploadPipe()) upload: Express.Multer.File,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.setSeatAvatar(uuid, participantId, upload);
+  }
+
+  @Delete(':uuid/participants/current/avatar')
+  @HttpCode(HttpStatus.OK)
+  @ZodSerializerDto(DTOs.UpdateSeatResponse)
+  public removeSeatAvatar(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @RawPlayerToken() token: string,
+  ) {
+    const { participantId } = this.tokens.verify(token, uuid);
+    return this.rooms.setSeatAvatar(uuid, participantId, null);
   }
 
   @Post(':uuid/hands')

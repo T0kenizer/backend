@@ -2,6 +2,7 @@ import { GameParticipant } from '@entities/game/game-participant.entity';
 import { GameSession } from '@entities/game/game-session.entity';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { ConfigModule } from '@modules/config/config.module';
+import { FilesModule } from '@modules/files/files.module';
 import { GameCodesService } from '@modules/game-core/game-codes.service';
 import * as Constants from '@modules/game-core/game-core.constants';
 import { GameLifecycleConsumer } from '@modules/game-core/game-lifecycle.consumer';
@@ -32,6 +33,7 @@ import { JwtModule } from '@nestjs/jwt';
     }),
     JwtModule.register({}),
     ConfigModule,
+    FilesModule,
     RedisModule,
     UsersModule,
   ],

@@ -765,6 +765,38 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "uuid"
+        },
+        "photo_uuid": {
+          "name": "photo_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "avatar_uuid": {
+          "name": "avatar_uuid",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
         }
       },
       "name": "game_participants",
@@ -779,6 +811,22 @@
           "primary": true
         },
         {
+          "columnNames": ["avatar_uuid"],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_game_participants_avatar_uuid",
+          "unique": false,
+          "primary": false
+        },
+        {
+          "columnNames": ["photo_uuid"],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_game_participants_photo_uuid",
+          "unique": false,
+          "primary": false
+        },
+        {
           "columnNames": ["session_uuid", "seat_index"],
           "composite": true,
           "constraint": true,
@@ -790,12 +838,30 @@
       "checks": [
         {
           "name": "chk_game_participants_host_has_no_user",
-          "columnName": "user_uuid",
+          "columnName": "role",
           "definition": "CHECK (((role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)))",
           "expression": "(role <> 'HOST'::game_participant_role) OR (user_uuid IS NULL)"
         }
       ],
       "foreignKeys": {
+        "game_participants_avatar_uuid_foreign": {
+          "columnNames": ["avatar_uuid"],
+          "constraintName": "game_participants_avatar_uuid_foreign",
+          "localTableName": "public.game_participants",
+          "referencedTableName": "public.files",
+          "referencedColumnNames": ["uuid"],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        },
+        "game_participants_photo_uuid_foreign": {
+          "columnNames": ["photo_uuid"],
+          "constraintName": "game_participants_photo_uuid_foreign",
+          "localTableName": "public.game_participants",
+          "referencedTableName": "public.files",
+          "referencedColumnNames": ["uuid"],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        },
         "game_participants_session_uuid_foreign": {
           "columnNames": ["session_uuid"],
           "constraintName": "game_participants_session_uuid_foreign",
@@ -954,7 +1020,7 @@
           "length": 6,
           "precision": null,
           "scale": null,
-          "default": "now()",
+          "default": null,
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
@@ -970,7 +1036,7 @@
           "length": 6,
           "precision": null,
           "scale": null,
-          "default": "now()",
+          "default": null,
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
@@ -986,15 +1052,6 @@
           "keyName": "game_sessions_pkey",
           "unique": true,
           "primary": true
-        },
-        {
-          "columnNames": ["status", "last_activity_at"],
-          "composite": true,
-          "constraint": false,
-          "keyName": "idx_game_sessions_stale",
-          "unique": false,
-          "primary": false,
-          "expression": "CREATE INDEX idx_game_sessions_stale ON public.game_sessions USING btree (status, last_activity_at) WHERE (closed_at IS NULL)"
         }
       ],
       "checks": [],
