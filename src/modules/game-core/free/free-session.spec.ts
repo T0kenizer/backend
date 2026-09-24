@@ -4,6 +4,7 @@ import { defaultConfigFor } from '@modules/game-core/game-modes';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
 import { BadRequestException } from '@nestjs/common';
 import {
+  Direction,
   EndResolution,
   GameMode,
   ParticipantRole,
@@ -43,6 +44,28 @@ function openSession(config: FreeGameConfig = freeConfig(), seats = 4) {
 const nobodyConnected = () => false;
 
 describe('FreeSession', () => {
+  describe('next player preview', () => {
+    it('previews clockwise order, skips folded seats and does not move the turn', () => {
+      const session = openSession();
+      const round = session.startRound();
+      session.seats[1].status = ParticipantStatus.Folded;
+      expect(round.turnState.nextParticipant).toBe(session.seats[2].id);
+      expect(round.turnState.activeParticipant).toBe(session.seats[0].id);
+      round.turnState.advance();
+      expect(round.turnState.activeParticipant).toBe(session.seats[2].id);
+    });
+
+    it('follows counterclockwise order and hides the preview during interruptions', () => {
+      const config = freeConfig();
+      config.turnPolicy.direction = Direction.CounterClockwise;
+      const session = openSession(config);
+      const round = session.startRound();
+      expect(round.turnState.nextParticipant).toBe(session.seats[3].id);
+      round.turnState.interruptionOpen = true;
+      expect(round.turnState.nextParticipant).toBeNull();
+    });
+  });
+
   describe('starting a round', () => {
     it('takes the forced bets the host declared, off the seats they name', () => {
       const session = openSession();
