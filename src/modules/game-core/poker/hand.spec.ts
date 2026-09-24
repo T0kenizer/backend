@@ -52,6 +52,18 @@ const optionsOf = (hand: Hand) =>
 const stacksOf = (order: Participant[]) => order.map((seat) => seat.balance);
 
 describe('Hand', () => {
+  it('previews the next owed action without changing the current player', () => {
+    const order = table([1000, 1000, 1000]);
+    const hand = deal(order);
+    expect(hand.betting.nextActor?.id).toBe(order[1].id);
+    expect(hand.betting.actor?.id).toBe(order[0].id);
+    hand.submitAction(order[0], PokerAction.Call);
+    expect(hand.betting.actor?.id).toBe(order[1].id);
+    hand.submitAction(order[1], PokerAction.Call);
+    // The big blind is last to act; nobody else currently owes a move.
+    expect(hand.betting.nextActor).toBeNull();
+  });
+
   describe('the blinds', () => {
     it('puts them to the button’s left and opens under the gun', () => {
       const order = table([1000, 1000, 1000]);

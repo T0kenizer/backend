@@ -51,6 +51,28 @@ export class TurnState {
     return this.catalog;
   }
 
+  get nextParticipant(): Nullable<string> {
+    if (
+      this.interruptionOpen ||
+      this.policy.regime === TurnRegime.Simultaneous
+    ) {
+      return null;
+    }
+    const currentIndex = this.participants.findIndex(
+      (participant) => participant.id === this.activeParticipant,
+    );
+    if (currentIndex === -1) return null;
+    const step = this.policy.direction === Direction.Clockwise ? 1 : -1;
+    const count = this.participants.length;
+    for (let offset = 1; offset < count; offset++) {
+      const index = (((currentIndex + step * offset) % count) + count) % count;
+      if (this.participants[index].status === ParticipantStatus.Active) {
+        return this.participants[index].id;
+      }
+    }
+    return null;
+  }
+
   advance(): void {
     const seats = this.participants.length;
     const currentIndex = this.participants.findIndex(

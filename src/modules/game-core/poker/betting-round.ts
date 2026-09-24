@@ -46,6 +46,15 @@ export class BettingRound {
     return this.actorIndex === null;
   }
 
+  /** Preview the existing queue without advancing or assuming a raise. */
+  get nextActor(): Nullable<Participant> {
+    if (this.actorIndex === null) return null;
+    const index = this.seek(this.actorIndex, false);
+    return index === null || index === this.actorIndex
+      ? null
+      : this.order[index];
+  }
+
   get minRaiseTo(): number {
     return this.currentBet + this.lastRaiseSize;
   }
