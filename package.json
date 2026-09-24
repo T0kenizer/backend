@@ -50,7 +50,7 @@
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/throttler": "^6.7.0",
     "@nestjs/websockets": "^11.1.28",
-    "@tokenizer/shared": "github:T0kenizer/shared#feat/game-room-flow",
+    "@tokenizer/shared": "github:T0kenizer/shared#develop",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.1.0",
     "connect-redis": "^9.0.0",
