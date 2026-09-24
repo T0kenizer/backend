@@ -1,6 +1,8 @@
+import type { File } from '@entities/file.entity';
 import type { GameParticipant } from '@entities/game/game-participant.entity';
 import type { GameSession } from '@entities/game/game-session.entity';
 import { CreateRequestContext, MikroORM } from '@mikro-orm/core';
+import { FilesService } from '@modules/files/files.service';
 import { GameCodesService } from '@modules/game-core/game-codes.service';
 import * as Constants from '@modules/game-core/game-core.constants';
 import type { SeatInit } from '@modules/game-core/game-core.types';
@@ -49,6 +51,8 @@ import {
 import { canUseMode, maxSeatsFor } from '@tokenizer/shared/utils/plans.utils';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
+// Loads the `Express.Multer` global augmentation shipped by @types/multer.
+import 'multer';
 
 export interface JoinResult {
   snapshot: GameSnapshot;
@@ -69,6 +73,7 @@ export class GameRoomsService {
     private readonly presence: GamePresenceService,
     private readonly lifecycle: GameLifecycleService,
     private readonly tokens: GameTokensService,
+    private readonly filesService: FilesService,
   ) {}
 
   @CreateRequestContext()
@@ -245,6 +250,42 @@ export class GameRoomsService {
 
     await this.noteActivity(session);
     return this.finalize(this.runtime.snapshot(gameUuid), session);
+  }
+
+  @CreateRequestContext()
+  async setSeatAvatar(
+    gameUuid: string,
+    participantId: string,
+    upload: Nullable<Express.Multer.File>,
+  ): Promise<GameSnapshot> {
+    await this.ensureRoomOpen(gameUuid);
+    const session = await this.loadPlayableSession(gameUuid);
+    const row = session.participants
+      .getItems()
+      .find((p) => p.uuid === participantId);
+    if (!row) throw new NotFoundException('Seat not found in this game');
+
+    let avatar: Nullable<File> = null;
+    if (upload) {
+      const account =
+        row.claimedBy && z.uuid().safeParse(row.claimedBy).success
+          ? await this.usersService.findUserByUuid(row.claimedBy)
+          : null;
+      avatar = await this.filesService.create(upload, account ?? undefined);
+    }
+    await this.gameSessionsService.setAvatar(row, avatar);
+
+    await this.noteActivity(session);
+    const snapshot = await this.finalize(
+      this.runtime.snapshot(gameUuid),
+      session,
+    );
+    this.presence.broadcast(
+      gameUuid,
+      GameServerEvent.ParticipantUpdated,
+      snapshot,
+    );
+    return snapshot;
   }
 
   private assertSeatBounds(seatCount: number): void {
@@ -630,9 +671,12 @@ export class GameRoomsService {
   ): Promise<GameSnapshot> {
     const config = gameConfigSchema.parse(session.config);
     const connected = this.presence.connectedParticipants(session.uuid);
+    const rows = new Map(
+      session.participants.getItems().map((row) => [row.uuid, row]),
+    );
     const participants = await Promise.all(
       snapshot.participants.map((p) =>
-        this.resolveParticipant(p, config, connected),
+        this.resolveParticipant(p, rows.get(p.id), config, connected),
       ),
     );
 
@@ -651,9 +695,11 @@ export class GameRoomsService {
 
   private async resolveParticipant(
     p: RawParticipantSnapshot,
+    row: Optional<GameParticipant>,
     config: GameConfig,
     connected: ReadonlySet<string>,
   ): Promise<ParticipantSnapshot> {
+    const avatar = row?.avatar ? await row.avatar.load() : null;
     const account =
       p.controller && z.uuid().safeParse(p.controller).success
         ? await this.usersService.findUserByUuid(p.controller)
@@ -674,9 +720,11 @@ export class GameRoomsService {
         (p.controller === DELETED_USER_CLAIM ? DELETED_USER_CLAIM : null) ??
         config.seating.seats[p.seatIndex]?.displayName ??
         `Seat ${p.seatIndex + 1}`,
-      photoUrl: account
-        ? await this.usersService.buildAvatarUrl(account)
-        : null,
+      avatarUrl: avatar
+        ? await this.filesService.buildCachedSignedUrl(avatar)
+        : account
+          ? await this.usersService.buildAvatarUrl(account)
+          : null,
     };
   }
 }

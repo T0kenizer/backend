@@ -1,13 +1,16 @@
+import { File } from '@entities/file.entity';
 import { GameSession } from '@entities/game/game-session.entity';
 import { User } from '@entities/user.entity';
 import {
   Check,
   Entity,
   Enum,
+  Index,
   ManyToOne,
   PrimaryKey,
   Property,
   Unique,
+  type Ref,
 } from '@mikro-orm/core';
 import { ParticipantRole } from '@tokenizer/shared/types';
 
@@ -58,6 +61,15 @@ export class GameParticipant {
     nullable: true,
   })
   displayName: Nullable<string> = null;
+
+  @ManyToOne(() => File, {
+    name: 'avatar_uuid',
+    nullable: true,
+    deleteRule: 'set null',
+    ref: true,
+  })
+  @Index({ name: 'idx_game_participants_avatar_uuid' })
+  avatar?: Ref<File>;
 
   @Property({
     name: 'initial_balance',
