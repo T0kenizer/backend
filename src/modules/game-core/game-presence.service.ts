@@ -8,6 +8,7 @@ export function gameRoom(gameUuid: string): string {
 
 export interface GameSocketState {
   gameUuid?: string;
+  /** Absent on a spectator socket: it watches the room, it does not hold a seat. */
   participantId?: string;
 }
 
@@ -26,8 +27,21 @@ export class GamePresenceService {
     );
   }
 
+  /**
+   * Whether the room has lost every _player_.
+   *
+   * Spectators are in the same socket room — that is how they are broadcast to
+   * — but they are not what keeps a table alive. Counting them here would let a
+   * television left on in an empty room hold the session open forever, past
+   * both the idle sweep and the release that follows the last player leaving.
+   */
   public isRoomEmpty(gameUuid: string): boolean {
-    return this.roomSize(gameUuid) === 0;
+    return this.connectedParticipants(gameUuid).size === 0;
+  }
+
+  /** How many anonymous watchers the room is broadcasting to. */
+  public spectatorCount(gameUuid: string): number {
+    return this.roomSize(gameUuid) - this.connectedParticipants(gameUuid).size;
   }
 
   public connectedParticipants(gameUuid: string): Set<string> {
@@ -59,6 +73,22 @@ export class GamePresenceService {
     const state = client.data as GameSocketState;
     state.gameUuid = gameUuid;
     state.participantId = participantId;
+    await client.join(gameRoom(gameUuid));
+  }
+
+  /**
+   * Binds a socket to a room without seating it.
+   *
+   * The state it leaves behind is deliberately half of what {@link attach}
+   * writes: a `gameUuid` so broadcasts reach it, and no `participantId` at all.
+   * Every message that changes the game reads its actor out of that missing
+   * field, so a spectator socket is refused by the gateway without a single
+   * extra check — it cannot act because there is nobody for it to act as.
+   */
+  public async spectate(client: Socket, gameUuid: string): Promise<void> {
+    const state = client.data as GameSocketState;
+    state.gameUuid = gameUuid;
+    delete state.participantId;
     await client.join(gameRoom(gameUuid));
   }
 

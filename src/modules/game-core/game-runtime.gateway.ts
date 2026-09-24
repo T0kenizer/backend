@@ -23,6 +23,7 @@ import {
   attachSocketDataSchema,
   declareWinnersDataSchema,
   resolveRoundDataSchema,
+  spectateSocketDataSchema,
   submitActionDataSchema,
   updateSeatDataSchema,
 } from '@tokenizer/shared/schemas';
@@ -101,6 +102,31 @@ export class GameRuntimeGateway
         snapshot,
       );
       return { snapshot, participantId };
+    });
+  }
+
+  /**
+   * Watch a table without being at it.
+   *
+   * Deliberately unauthenticated: a spectator is whoever is in the room looking
+   * at the screen, and asking them for a token would mean issuing one, which
+   * would mean seating them. So the only thing this proves is that the room is
+   * open — {@link GameRoomsService.ensureRoomOpen} throws otherwise — and the
+   * only thing it grants is the broadcast feed.
+   *
+   * Nothing is announced when a spectator arrives. Nobody joined; the players
+   * have no reason to be told, and the seats they see must not move because a
+   * television was switched on.
+   */
+  @SubscribeMessage(GameClientMessage.Spectate)
+  spectate(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.guard(client, async () => {
+      const data = parsePayload(spectateSocketDataSchema, payload);
+
+      const snapshot = await this.rooms.ensureRoomOpen(data.gameUuid);
+      await this.presence.spectate(client, data.gameUuid);
+
+      return { snapshot };
     });
   }
 
