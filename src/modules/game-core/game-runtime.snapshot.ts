@@ -22,7 +22,7 @@ import {
 
 export interface RawParticipantSnapshot extends Omit<
   ParticipantSnapshot,
-  'displayName' | 'photoUrl' | 'connected' | 'claimed'
+  'displayName' | 'avatarUrl' | 'connected' | 'claimed'
 > {
   displayNameOverride: Nullable<string>;
   controller: Nullable<string>;
@@ -72,6 +72,7 @@ function serializeHand(hand: Hand): HandSnapshot {
     pots: hand.pots().map(serializePotLayer),
     betting: {
       activeParticipant: hand.betting.actor?.id ?? null,
+      nextParticipant: hand.betting.nextActor?.id ?? null,
       currentBet: hand.betting.currentBet,
       minRaiseTo: hand.betting.minRaiseTo,
       committed: Object.fromEntries(hand.betting.committed),
@@ -107,6 +108,7 @@ function serializeRound(round: Round): RoundSnapshot {
     pots: round.pots.map(serializeFreePot),
     turn: {
       activeParticipant: round.turnState.activeParticipant,
+      nextParticipant: round.turnState.nextParticipant,
       interruptionOpen: round.turnState.interruptionOpen,
       pendingClaims: round.turnState.pendingClaims.length,
       legalActions: round.turnState.computeLegalActions(),

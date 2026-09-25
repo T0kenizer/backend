@@ -14,6 +14,7 @@ describe(MailService.name, () => {
       NODE_ENV: 'production',
       SMTP_HOST: 'mailpit',
       SMTP_FROM_DOMAIN: 'tokenizer.fr',
+      FRONTEND_URL: 'https://tokenizer.fr',
       ...overrides,
     };
 
@@ -77,6 +78,21 @@ describe(MailService.name, () => {
           template: 'reset-password',
           context: expect.objectContaining({
             resetUrl: 'https://reset',
+          }) as unknown,
+        }),
+      );
+    });
+
+    it('should brand every mail with the logo served by the frontend', async () => {
+      await service.deliverAccountConfirmed('user@example.com');
+
+      expect(mailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            appUrl: 'https://tokenizer.fr',
+            logoUrl: 'https://tokenizer.fr/logo/tokenizer-logo.png',
+            title: 'Your email address is confirmed',
+            year: new Date().getFullYear(),
           }) as unknown,
         }),
       );

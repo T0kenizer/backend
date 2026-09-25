@@ -111,7 +111,7 @@ describe('GameSessionsService', () => {
       // depends on the owner's plan.
       expect(repository.findOne).toHaveBeenCalledWith(
         { uuid: GAME_UUID },
-        { populate: ['participants', 'owner'] },
+        { populate: ['participants.avatar', 'owner'] },
       );
     });
   });

@@ -27,3 +27,5 @@ export const JOIN_BY_CODE_LIMIT = 10;
 export const JOIN_BY_CODE_TTL_MS = 60 * 1000;
 export const ROOM_BY_CODE_LIMIT = 20;
 export const ROOM_BY_CODE_TTL_MS = 60 * 1000;
+export const SEAT_AVATAR_LIMIT = 10;
+export const SEAT_AVATAR_TTL_MS = 60 * 1000;

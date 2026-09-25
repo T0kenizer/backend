@@ -40,6 +40,18 @@ export class MailService implements OnModuleInit {
     });
   }
 
+  private context(title: string, extra: Record<string, unknown> = {}) {
+    const appUrl = this.configService.get('FRONTEND_URL');
+
+    return {
+      ...extra,
+      title,
+      year: new Date().getFullYear(),
+      appUrl,
+      logoUrl: new URL(Constants.LOGO_PATH, appUrl).toString(),
+    };
+  }
+
   public async sendPasswordReset(
     email: string,
     resetUrl: string,
@@ -59,11 +71,7 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Confirm your account deletion',
       template: 'delete-account',
-      context: {
-        deletionUrl,
-        title: 'Confirm your account deletion',
-        year: new Date().getFullYear(),
-      },
+      context: this.context('Confirm your account deletion', { deletionUrl }),
     });
   }
 
@@ -72,11 +80,7 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Reset your password',
       template: 'reset-password',
-      context: {
-        resetUrl,
-        title: 'Reset your password',
-        year: new Date().getFullYear(),
-      },
+      context: this.context('Reset your password', { resetUrl }),
     });
   }
 
@@ -95,11 +99,9 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Confirm your email address',
       template: 'confirm-account',
-      context: {
+      context: this.context('Confirm your email address', {
         confirmationUrl,
-        title: 'Confirm your email address',
-        year: new Date().getFullYear(),
-      },
+      }),
     });
   }
 
@@ -112,10 +114,7 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Your email address is confirmed',
       template: 'account-confirmed',
-      context: {
-        title: 'Your email address is confirmed',
-        year: new Date().getFullYear(),
-      },
+      context: this.context('Your email address is confirmed'),
     });
   }
 
@@ -128,10 +127,7 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Your password has been changed',
       template: 'password-changed',
-      context: {
-        title: 'Your password has been changed',
-        year: new Date().getFullYear(),
-      },
+      context: this.context('Your password has been changed'),
     });
   }
 
@@ -147,11 +143,9 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Your email address has been changed',
       template: 'email-changed',
-      context: {
+      context: this.context('Your email address has been changed', {
         newEmail,
-        title: 'Your email address has been changed',
-        year: new Date().getFullYear(),
-      },
+      }),
     });
   }
 
@@ -164,10 +158,7 @@ export class MailService implements OnModuleInit {
       to: email,
       subject: 'Your account has been deleted',
       template: 'account-deleted',
-      context: {
-        title: 'Your account has been deleted',
-        year: new Date().getFullYear(),
-      },
+      context: this.context('Your account has been deleted'),
     });
   }
 }

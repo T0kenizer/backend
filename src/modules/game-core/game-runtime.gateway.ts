@@ -6,6 +6,8 @@ import { GameRoomsService } from '@modules/game-core/game-rooms.service';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -23,6 +25,7 @@ import {
   attachSocketDataSchema,
   declareWinnersDataSchema,
   resolveRoundDataSchema,
+  spectateSocketDataSchema,
   submitActionDataSchema,
   updateSeatDataSchema,
 } from '@tokenizer/shared/schemas';
@@ -101,6 +104,18 @@ export class GameRuntimeGateway
         snapshot,
       );
       return { snapshot, participantId };
+    });
+  }
+
+  @SubscribeMessage(GameClientMessage.Spectate)
+  spectate(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.guard(client, async () => {
+      const data = parsePayload(spectateSocketDataSchema, payload);
+
+      const snapshot = await this.rooms.ensureRoomOpen(data.gameUuid);
+      await this.presence.spectate(client, data.gameUuid);
+
+      return { snapshot };
     });
   }
 
@@ -259,14 +274,18 @@ export class GameRuntimeGateway
   private async guard<T>(
     client: Socket,
     fn: () => T | Promise<T>,
-  ): Promise<T | { error: string }> {
+  ): Promise<T | { error: string; status: number }> {
     try {
       return await fn();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const status =
+        err instanceof HttpException
+          ? err.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
       this.logger.warn(`Gateway error for ${client.id}: ${message}`);
-      client.emit(GameServerEvent.Error, { error: message });
-      return { error: message };
+      client.emit(GameServerEvent.Error, { error: message, status });
+      return { error: message, status };
     }
   }
 }
