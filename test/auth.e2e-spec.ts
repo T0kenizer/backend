@@ -162,6 +162,46 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  describe('User sessions (GET /users/:uuid/sessions)', () => {
+    it('lists the current session as the listing describes it', async () => {
+      const agent = request.agent(app.getHttpServer());
+
+      await agent
+        .post('/sessions')
+        .send({ login: credentials.username, password: credentials.password })
+        .expect(201);
+
+      const current = (await agent.get('/sessions/current').expect(200))
+        .body as SessionResponse;
+      const res = await agent
+        .get(`/users/${current.user.uuid}/sessions`)
+        .expect(200);
+
+      const sessions = res.body as UserSession[];
+      expect(sessions).toContainEqual(
+        expect.objectContaining({
+          id: current.id,
+          current: true,
+          createdAt: current.createdAt,
+          device: current.device,
+        }),
+      );
+    });
+
+    it("rejects a plain user listing somebody else's sessions", async () => {
+      const agent = request.agent(app.getHttpServer());
+
+      await agent
+        .post('/sessions')
+        .send({ login: credentials.username, password: credentials.password })
+        .expect(201);
+
+      await agent
+        .get('/users/00000000-0000-4000-8000-000000000000/sessions')
+        .expect(403);
+    });
+  });
+
   describe('Logout (DELETE /sessions/current)', () => {
     it('destroys the session so subsequent requests are unauthenticated', async () => {
       const agent = request.agent(app.getHttpServer());
