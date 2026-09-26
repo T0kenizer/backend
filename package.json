@@ -50,7 +50,7 @@
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/throttler": "^6.7.0",
     "@nestjs/websockets": "^11.1.28",
-    "@tokenizer/shared": "github:T0kenizer/shared#develop",
+    "@tokenizer/shared": "github:T0kenizer/shared#main",
     "bcrypt": "^6.0.0",
     "bowser": "^2.14.1",
     "bullmq": "^6.1.0",
