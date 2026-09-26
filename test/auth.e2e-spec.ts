@@ -17,10 +17,18 @@ interface SerializedUser {
   googleId?: string;
 }
 
-interface SessionResponse {
+interface UserSession {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: Nullable<string>;
+  expiresIn: Nullable<number>;
+  device: { type: string };
+}
+
+interface SessionResponse extends UserSession {
   user: SerializedUser;
-  expiresAt: string;
-  expiresIn: number;
 }
 
 describe('Auth (e2e)', () => {
@@ -111,8 +119,11 @@ describe('Auth (e2e)', () => {
         username: credentials.username,
         email: credentials.email,
       });
-      expect(body.expiresIn).toEqual(expect.any(Number));
-      expect(body.expiresAt).toEqual(expect.any(String));
+      expect(body).toMatchObject({
+        current: true,
+        expiresAt: expect.any(String) as string,
+        expiresIn: expect.any(Number) as number,
+      });
 
       const cookies = res.get('Set-Cookie') ?? [];
       expect(cookies.some((c) => c.startsWith(`${AUTH_COOKIE_NAME}=`))).toBe(
@@ -147,6 +158,7 @@ describe('Auth (e2e)', () => {
         username: credentials.username,
         email: credentials.email,
       });
+      expect(body.current).toBe(true);
     });
   });
 

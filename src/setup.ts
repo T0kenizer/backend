@@ -2,8 +2,15 @@ import { DatabaseExceptionInterceptor } from '@interceptors/database-exception.i
 import { LoggingInterceptor } from '@interceptors/logging.interceptor';
 import { ConfigService } from '@modules/config/config.service';
 import { RedisService } from '@modules/redis/services/redis.service';
-import { AUTH_COOKIE_NAME } from '@modules/sessions/sessions.constants';
-import { sessionExpirationMiddleware } from '@modules/sessions/sessions.middleware';
+import {
+  AUTH_COOKIE_NAME,
+  SESSION_KEY_PREFIX,
+} from '@modules/sessions/sessions.constants';
+import {
+  sessionActivityMiddleware,
+  sessionExpirationMiddleware,
+} from '@modules/sessions/sessions.middleware';
+import { SessionsService } from '@modules/sessions/sessions.service';
 import {
   ArgumentsHost,
   Catch,
@@ -76,7 +83,7 @@ export function setupApp(app: INestApplication): INestApplication {
       name: AUTH_COOKIE_NAME,
       store: new RedisStore({
         client: redisService.client,
-        prefix: 'sess:',
+        prefix: SESSION_KEY_PREFIX,
       }),
       secret: configService.get('SECRET_KEY'),
       resave: false,
@@ -96,6 +103,7 @@ export function setupApp(app: INestApplication): INestApplication {
   app.use(sessionExpirationMiddleware);
   app.use(passport.initialize());
   app.use(passport.session());
+  app.use(sessionActivityMiddleware(app.get(SessionsService)));
 
   return app;
 }
