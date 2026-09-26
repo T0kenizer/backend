@@ -1,6 +1,7 @@
 import { ConfigService } from '@modules/config/config.service';
+import { GoogleEmailNotVerifiedException } from '@modules/sessions/sessions.exceptions';
 import { UsersService } from '@modules/users/users.service';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Profile, Strategy, VerifyCallback } from 'passport-google-oauth20';
 
@@ -27,10 +28,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   ): Promise<void> {
     try {
       const email = profile.emails?.find((e) => e.verified)?.value;
-      if (!email)
-        return done(
-          new UnauthorizedException('Google account has no verified email'),
-        );
+      if (!email) return done(new GoogleEmailNotVerifiedException());
 
       const user = await this.usersService.findOrCreateFromGoogle({
         googleId: profile.id,

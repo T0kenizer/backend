@@ -8,7 +8,6 @@ declare module 'express' {
 
 declare module 'express-session' {
   interface SessionData {
-    oauthRedirect?: string;
     rolling?: boolean;
     absoluteExpiresAt?: number;
   }
