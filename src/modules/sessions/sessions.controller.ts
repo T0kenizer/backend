@@ -1,9 +1,9 @@
 import { ConfigService } from '@modules/config/config.service';
 import { AuthenticatedGuard } from '@modules/sessions/authenticated.guard';
-import { GoogleAuthGuard } from '@modules/sessions/guards/google-auth.guard';
+import { OAuthCallbackFilter } from '@modules/sessions/filters/oauth-callback.filter';
+import { OAUTH_CALLBACK_PATH } from '@modules/sessions/sessions.constants';
 import * as DTOs from '@modules/sessions/sessions.dtos';
 import { SessionsService } from '@modules/sessions/sessions.service';
-import { isRelativePath } from '@modules/sessions/sessions.utils';
 import {
   Body,
   Controller,
@@ -14,6 +14,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -53,10 +54,11 @@ export class SessionsController {
   }
 
   @Get('/google')
-  @UseGuards(GoogleAuthGuard)
+  @UseGuards(AuthGuard('google'))
   public google() {}
 
   @Get('/google/callback')
+  @UseFilters(OAuthCallbackFilter)
   @UseGuards(AuthGuard('google'))
   public async googleCallback(
     @Req() req: Request,
@@ -64,12 +66,10 @@ export class SessionsController {
   ): Promise<void> {
     await this.sessionsService.create(req);
 
-    const frontendUrl = this.configService.get('FRONTEND_URL');
-    const redirect = req.session.oauthRedirect;
-    delete req.session.oauthRedirect;
-
-    const safeRedirect = redirect && isRelativePath(redirect) ? redirect : '/';
-    const target = new URL(safeRedirect, frontendUrl);
+    const target = new URL(
+      OAUTH_CALLBACK_PATH,
+      this.configService.get('FRONTEND_URL'),
+    );
     res.redirect(target.toString());
   }
 }
