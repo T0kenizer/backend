@@ -11,9 +11,11 @@ import {
   type GameConfig,
   type GameModeDescriptor,
 } from '@tokenizer/shared/types';
+import { parseEnum } from '@utils/enums.utils';
 
-export const GAME_MODES: readonly GameModeDescriptor[] = [
-  {
+// Listed in the order a host is offered them, poker first.
+export const GAME_MODES: Record<GameMode, GameModeDescriptor> = {
+  [GameMode.Poker]: {
     mode: GameMode.Poker,
     name: 'Poker',
     description:
@@ -41,7 +43,7 @@ export const GAME_MODES: readonly GameModeDescriptor[] = [
       },
     },
   },
-  {
+  [GameMode.Free]: {
     mode: GameMode.Free,
     name: 'Free table',
     description:
@@ -108,14 +110,13 @@ export const GAME_MODES: readonly GameModeDescriptor[] = [
       },
     },
   },
-];
+};
 
 export function getMode(mode: string): Optional<GameModeDescriptor> {
-  const descriptor = GAME_MODES.find(
-    (entry) => (entry.mode as string) === mode,
-  );
-  if (!descriptor) return undefined;
+  const known = parseEnum(Object.values(GameMode), mode);
+  if (!known) return undefined;
 
+  const descriptor = GAME_MODES[known];
   return { ...descriptor, defaults: structuredClone(descriptor.defaults) };
 }
 

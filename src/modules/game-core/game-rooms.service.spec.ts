@@ -415,15 +415,14 @@ describe('GameRoomsService', () => {
       });
 
       it('answers what a host may open a table in, poker first', () => {
-        expect(service.listModes().map((entry) => entry.mode)).toEqual([
+        expect(Object.keys(service.listModes())).toEqual([
           GameMode.Poker,
           GameMode.Free,
         ]);
       });
 
       it('says out loud which of the modes is still an experiment', () => {
-        const experimental = service
-          .listModes()
+        const experimental = Object.values(service.listModes())
           .filter((entry) => entry.experimental)
           .map((entry) => entry.mode);
 

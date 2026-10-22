@@ -31,6 +31,7 @@ import {
 import { DELETED_USER_CLAIM } from '@tokenizer/shared/constants/users.constants';
 import { gameConfigSchema } from '@tokenizer/shared/schemas';
 import {
+  GameMode,
   GameServerEvent,
   GameSessionStatus,
   Plan,
@@ -132,7 +133,7 @@ export class GameRoomsService {
     return this.seatPlayer(session, participantId, owner.uuid);
   }
 
-  listModes(): readonly GameModeDescriptor[] {
+  listModes(): Record<GameMode, GameModeDescriptor> {
     return GAME_MODES;
   }
 
