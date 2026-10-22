@@ -388,7 +388,7 @@ describe('GameRoomsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('refuses the free table to a plan that does not pay for it', async () => {
+      it('refuses the sandbox to a plan that does not pay for it', async () => {
         await expect(
           service.createGame(OWNER_UUID, {
             name: GAME_NAME,
@@ -397,7 +397,7 @@ describe('GameRoomsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('opens the free table for a plan that does', async () => {
+      it('opens the sandbox for a plan that does', async () => {
         users.getUserByUuid.mockResolvedValueOnce({
           uuid: OWNER_UUID,
           username: 'owner',

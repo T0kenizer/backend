@@ -45,7 +45,7 @@ export const GAME_MODES: Record<GameMode, GameModeDescriptor> = {
   },
   [GameMode.Free]: {
     mode: GameMode.Free,
-    name: 'Free table',
+    name: 'Sandbox',
     description:
       'Your own game: you name the moves, the opening bets and the way the ' +
       'turn travels. Tokenizer only keeps the chips straight.',

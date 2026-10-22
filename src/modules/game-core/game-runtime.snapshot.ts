@@ -1,13 +1,13 @@
-import type { Action } from '@modules/game-core/free/action';
-import type { FreeSession } from '@modules/game-core/free/free-session';
-import type { Pot } from '@modules/game-core/free/pot';
-import type { Round } from '@modules/game-core/free/round';
 import type { Hand } from '@modules/game-core/poker/hand';
 import type { HandEvent } from '@modules/game-core/poker/hand-event';
 import type { PokerSession } from '@modules/game-core/poker/poker-session';
 import type { PotLayer } from '@modules/game-core/poker/pots';
 import type { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
+import type { Action } from '@modules/game-core/sandbox/action';
+import type { Pot } from '@modules/game-core/sandbox/pot';
+import type { Round } from '@modules/game-core/sandbox/round';
+import type { SandboxSession } from '@modules/game-core/sandbox/sandbox-session';
 import {
   GameMode,
   type ActionSnapshot,
@@ -82,7 +82,7 @@ function serializeHand(hand: Hand): HandSnapshot {
   };
 }
 
-function serializeFreePot(pot: Pot): PotSnapshot {
+function serializeSandboxPot(pot: Pot): PotSnapshot {
   return {
     id: pot.id,
     amount: pot.amount,
@@ -105,7 +105,7 @@ function serializeRound(round: Round): RoundSnapshot {
   return {
     id: round.id,
     status: round.status,
-    pots: round.pots.map(serializeFreePot),
+    pots: round.pots.map(serializeSandboxPot),
     turn: {
       activeParticipant: round.turnState.activeParticipant,
       nextParticipant: round.turnState.nextParticipant,
@@ -155,14 +155,16 @@ export function serializeSession(
     };
   }
 
-  const free = session as FreeSession;
+  const sandbox = session as SandboxSession;
   return {
     id,
     mode: GameMode.Free,
-    status: free.status,
-    chipModel: free.config.economy.chipModel,
-    dealsPlayed: free.dealsPlayed,
+    status: sandbox.status,
+    chipModel: sandbox.config.economy.chipModel,
+    dealsPlayed: sandbox.dealsPlayed,
     participants,
-    currentRound: free.currentRound ? serializeRound(free.currentRound) : null,
+    currentRound: sandbox.currentRound
+      ? serializeRound(sandbox.currentRound)
+      : null,
   };
 }
