@@ -1,3 +1,4 @@
+import { SkipLogging } from '@decorators/logging.decorators';
 import { EntityManager } from '@mikro-orm/postgresql';
 import {
   Controller,
@@ -9,6 +10,7 @@ import { RedisCacheService } from './redis/services/redis-cache.service';
 import { RedisQueueService } from './redis/services/redis-queue.service';
 import { RedisService } from './redis/services/redis.service';
 
+@SkipLogging()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);

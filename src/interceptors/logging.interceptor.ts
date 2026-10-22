@@ -1,3 +1,4 @@
+import { SKIP_LOGGING_KEY } from '@decorators/logging.decorators';
 import { User } from '@entities/user.entity';
 import type {
   CallHandler,
@@ -5,6 +6,7 @@ import type {
   NestInterceptor,
 } from '@nestjs/common';
 import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { catchError, Observable, tap, throwError } from 'rxjs';
 
@@ -18,6 +20,7 @@ const MIN_LOGGING_DURATION_MS = 250;
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
+  private readonly reflector = new Reflector();
 
   constructor(private readonly debug = false) {}
 
@@ -25,6 +28,12 @@ export class LoggingInterceptor implements NestInterceptor {
     context: ExecutionContext,
     next: CallHandler<unknown>,
   ): Observable<unknown> | Promise<Observable<unknown>> {
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_LOGGING_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skip) return next.handle();
+
     const request: Request = context.switchToHttp().getRequest();
     const start = Date.now();
 
