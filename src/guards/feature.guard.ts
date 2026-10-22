@@ -1,5 +1,6 @@
 import { FEATURE_KEY } from '@decorators/plan.decorators';
 import { User } from '@entities/user.entity';
+import { PLAN_METADATA } from '@modules/plans/plans.constants';
 import {
   CanActivate,
   ExecutionContext,
@@ -28,7 +29,8 @@ export class FeatureGuard implements CanActivate {
     const user = req.user as Nullable<User>;
     const plan = user?.plan ?? Plan.Anonymous;
 
-    if (features.every((feature) => hasFeature(plan, feature))) return true;
+    if (features.every((feature) => hasFeature(PLAN_METADATA, plan, feature)))
+      return true;
 
     throw new ForbiddenException('Your plan does not grant this action');
   }

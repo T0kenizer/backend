@@ -10,6 +10,7 @@ import { GameCoreModule } from '@modules/game-core/game-core.module';
 import { HealthController } from '@modules/health.controller';
 import { MailModule } from '@modules/mail/mail.module';
 import { PasswordResetsModule } from '@modules/password-resets/password-resets.module';
+import { PlansModule } from '@modules/plans/plans.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { RedisQueueService } from '@modules/redis/services/redis-queue.service';
 import { SessionsModule } from '@modules/sessions/sessions.module';
@@ -55,6 +56,7 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     AccountConfirmationsModule,
     GameCoreModule,
     SubscriptionsModule,
+    PlansModule,
   ],
   controllers: [HealthController],
   providers: [

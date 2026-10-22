@@ -16,6 +16,7 @@ import type {
 } from '@modules/game-core/game-runtime.snapshot';
 import { GameSessionsService } from '@modules/game-core/game-sessions.service';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
+import { PLAN_METADATA } from '@modules/plans/plans.constants';
 import { UsersService } from '@modules/users/users.service';
 import {
   BadRequestException,
@@ -90,7 +91,7 @@ export class GameRoomsService {
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
 
-    if (!canUseMode(owner.plan, data.mode)) {
+    if (!canUseMode(PLAN_METADATA, owner.plan, data.mode)) {
       throw new ForbiddenException(
         `Your plan does not include ${data.mode.toLowerCase()}`,
       );
@@ -106,9 +107,11 @@ export class GameRoomsService {
 
     this.assertSeatBounds(gameConfig.seating.seats.length);
 
-    if (gameConfig.seating.seats.length > maxSeatsFor(owner.plan)) {
+    if (
+      gameConfig.seating.seats.length > maxSeatsFor(PLAN_METADATA, owner.plan)
+    ) {
       throw new ForbiddenException(
-        `Your plan allows at most ${maxSeatsFor(owner.plan)} seats`,
+        `Your plan allows at most ${maxSeatsFor(PLAN_METADATA, owner.plan)} seats`,
       );
     }
 
@@ -310,7 +313,10 @@ export class GameRoomsService {
     const seatCount = session.participants.getItems().length;
     this.assertSeatBounds(seatCount + 1);
 
-    const allowed = maxSeatsFor(session.owner?.plan ?? Plan.Free);
+    const allowed = maxSeatsFor(
+      PLAN_METADATA,
+      session.owner?.plan ?? Plan.Free,
+    );
     if (seatCount >= allowed) {
       throw new ForbiddenException(
         `This table cannot grow past ${allowed} seats`,
@@ -690,7 +696,8 @@ export class GameRoomsService {
       canAddSeat:
         this.runtime.canAddSeat(session.uuid) &&
         participants.length < MAX_SEATS &&
-        participants.length < maxSeatsFor(session.owner?.plan ?? Plan.Free),
+        participants.length <
+          maxSeatsFor(PLAN_METADATA, session.owner?.plan ?? Plan.Free),
     };
   }
 
