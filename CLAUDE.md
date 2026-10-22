@@ -50,7 +50,7 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 - `@guards/*` → `src/guards/*`
 - `@interceptors/*` → `src/interceptors/*`
 - `@commands/*` → `src/modules/commands/*`
-- `@utils/*` → `src/utils/*` (declared, but the directory does not exist yet)
+- `@utils/*` → `src/utils/*` (`parseEnum`, to read an enum member out of an untrusted string — a query param, a Stripe metadata — without casting)
 - `@/*` → `src/*`
 - `@test/*` → `test/*` (tests also get `@factories/*` → `test/factories/*`)
 
