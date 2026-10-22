@@ -1,4 +1,4 @@
-import type { HandEventType, Street } from '@tokenizer/shared/types';
+import { HandEventType, Street } from '@tokenizer/shared/types';
 
 export interface HandEventParams {
   participantId: Nullable<string>;

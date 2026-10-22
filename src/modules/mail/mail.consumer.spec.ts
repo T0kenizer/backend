@@ -1,5 +1,5 @@
 import { MailConsumer } from '@modules/mail/mail.consumer';
-import { MailService } from '@modules/mail/mail.service';
+import type { MailService } from '@modules/mail/mail.service';
 import * as Types from '@modules/mail/mail.types';
 import { TOKEN_TTL_MS as PASSWORD_RESET_TOKEN_TTL_MS } from '@modules/password-resets/password-resets.constants';
 

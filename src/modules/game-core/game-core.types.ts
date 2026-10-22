@@ -1,4 +1,4 @@
-import type { ParticipantRole } from '@tokenizer/shared/types';
+import { ParticipantRole } from '@tokenizer/shared/types';
 
 export interface ClaimParams {
   holderId: string;
