@@ -13,6 +13,7 @@ import { PasswordResetsModule } from '@modules/password-resets/password-resets.m
 import { RedisModule } from '@modules/redis/redis.module';
 import { RedisQueueService } from '@modules/redis/services/redis-queue.service';
 import { SessionsModule } from '@modules/sessions/sessions.module';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 import { UsersModule } from '@modules/users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
@@ -53,6 +54,7 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     AccountDeletionsModule,
     AccountConfirmationsModule,
     GameCoreModule,
+    SubscriptionsModule,
   ],
   controllers: [HealthController],
   providers: [
