@@ -63,6 +63,13 @@ export class User {
   password?: Opt<string>;
 
   @Property({
+    name: 'password_changed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
+  passwordChangedAt?: Opt<Date>;
+
+  @Property({
     name: 'google_id',
     type: 'varchar',
     length: Constants.GOOGLE_ID_MAX_LENGTH,
@@ -72,13 +79,6 @@ export class User {
   @Index({ name: 'idx_users_google_id' })
   googleId?: Opt<string>;
 
-  @ManyToOne(() => File, {
-    name: 'avatar_uuid',
-    nullable: true,
-    deleteRule: 'set null',
-    ref: true,
-  })
-  @Index({ name: 'idx_users_avatar_uuid' })
   @Property({
     name: 'stripe_customer_id',
     type: 'varchar',
@@ -89,6 +89,13 @@ export class User {
   @Index({ name: 'idx_users_stripe_customer_id' })
   stripeCustomerId?: Opt<string>;
 
+  @ManyToOne(() => File, {
+    name: 'avatar_uuid',
+    nullable: true,
+    deleteRule: 'set null',
+    ref: true,
+  })
+  @Index({ name: 'idx_users_avatar_uuid' })
   avatar?: Ref<File>;
 
   @Enum({

@@ -225,6 +225,7 @@ export class UsersService {
   public async updatePassword(user: User, password: string): Promise<void> {
     const entityManager = this.usersRepository.getEntityManager();
     user.password = bcrypt.hashSync(password, HASH_ROUNDS);
+    user.passwordChangedAt = new Date();
     await entityManager.flush();
 
     try {
