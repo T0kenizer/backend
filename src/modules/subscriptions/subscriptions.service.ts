@@ -2,20 +2,17 @@ import { User } from '@entities/user.entity';
 import { EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { ConfigService } from '@modules/config/config.service';
+import { CATALOG, OFFER_METADATA_KEY } from '@modules/offers/offers.catalog';
+import { planOf } from '@modules/offers/offers.utils';
+import { PLAN_TIERS } from '@modules/plans/plans.constants';
 import { StripeService } from '@modules/stripe/stripe.service';
-import {
-  CATALOG,
-  OFFER_METADATA_KEY,
-} from '@modules/subscriptions/subscriptions.catalog';
 import * as Constants from '@modules/subscriptions/subscriptions.constants';
-import { planOf } from '@modules/subscriptions/subscriptions.utils';
 import {
   BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PLAN_TIERS } from '@tokenizer/shared/constants/plans.constants';
 import { STRIPE_STATUS_PARAM } from '@tokenizer/shared/constants/subscriptions.constants';
 import {
   BillingInterval,
@@ -338,6 +335,7 @@ export class SubscriptionsService {
 
     return {
       offer,
+      plan: planOf(offer),
       status: subscription.status as SubscriptionStatus,
       price: {
         amount: item.price.unit_amount ?? 0,

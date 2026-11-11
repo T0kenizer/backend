@@ -16,7 +16,7 @@ import type {
 } from '@modules/game-core/game-runtime.snapshot';
 import { GameSessionsService } from '@modules/game-core/game-sessions.service';
 import { GameTokensService } from '@modules/game-core/game-tokens.service';
-import { PLAN_METADATA } from '@modules/plans/plans.constants';
+import { PlanAccess } from '@modules/plans/plans.access';
 import { UsersService } from '@modules/users/users.service';
 import {
   BadRequestException,
@@ -50,7 +50,6 @@ import {
   type SubmitActionData,
   type UpdateSeatData,
 } from '@tokenizer/shared/types';
-import { canUseMode, maxSeatsFor } from '@tokenizer/shared/utils/plans.utils';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 // Loads the `Express.Multer` global augmentation shipped by @types/multer.
@@ -90,8 +89,9 @@ export class GameRoomsService {
     }
 
     const owner = await this.usersService.getUserByUuid(ownerUuid);
+    const access = PlanAccess.of(owner.plan);
 
-    if (!canUseMode(PLAN_METADATA, owner.plan, data.mode)) {
+    if (!access.allowsMode(data.mode)) {
       throw new ForbiddenException(
         `Your plan does not include ${data.mode.toLowerCase()}`,
       );
@@ -107,11 +107,9 @@ export class GameRoomsService {
 
     this.assertSeatBounds(gameConfig.seating.seats.length);
 
-    if (
-      gameConfig.seating.seats.length > maxSeatsFor(PLAN_METADATA, owner.plan)
-    ) {
+    if (!access.allowsSeats(gameConfig.seating.seats.length)) {
       throw new ForbiddenException(
-        `Your plan allows at most ${maxSeatsFor(PLAN_METADATA, owner.plan)} seats`,
+        `Your plan allows at most ${access.maxSeats} seats`,
       );
     }
 
@@ -313,13 +311,10 @@ export class GameRoomsService {
     const seatCount = session.participants.getItems().length;
     this.assertSeatBounds(seatCount + 1);
 
-    const allowed = maxSeatsFor(
-      PLAN_METADATA,
-      session.owner?.plan ?? Plan.Free,
-    );
-    if (seatCount >= allowed) {
+    const access = this.ownerAccess(session);
+    if (!access.allowsSeats(seatCount + 1)) {
       throw new ForbiddenException(
-        `This table cannot grow past ${allowed} seats`,
+        `This table cannot grow past ${access.maxSeats} seats`,
       );
     }
 
@@ -696,9 +691,14 @@ export class GameRoomsService {
       canAddSeat:
         this.runtime.canAddSeat(session.uuid) &&
         participants.length < MAX_SEATS &&
-        participants.length <
-          maxSeatsFor(PLAN_METADATA, session.owner?.plan ?? Plan.Free),
+        this.ownerAccess(session).allowsSeats(participants.length + 1),
     };
+  }
+
+  // What the owner's plan allows the table, a table that lost its owner
+  // keeping the free limits.
+  private ownerAccess(session: GameSession): PlanAccess {
+    return PlanAccess.of(session.owner?.plan ?? Plan.Free);
   }
 
   private async resolveParticipant(

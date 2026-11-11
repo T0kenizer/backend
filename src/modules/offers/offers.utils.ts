@@ -1,8 +1,5 @@
-import {
-  CATALOG,
-  PRODUCTS,
-} from '@modules/subscriptions/subscriptions.catalog';
-import type { CatalogPlan } from '@modules/subscriptions/subscriptions.types';
+import { CATALOG, PRODUCTS } from '@modules/offers/offers.catalog';
+import type { CatalogPlan } from '@modules/offers/offers.types';
 import { Offer } from '@tokenizer/shared/types';
 
 export function planOf(offer: Offer): CatalogPlan {

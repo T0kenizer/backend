@@ -1,17 +1,18 @@
 import { ConfigService } from '@modules/config/config.service';
-import { StripeService } from '@modules/stripe/stripe.service';
 import {
   CATALOG,
   DEFAULT_PRODUCT_IMAGE,
   OFFER_METADATA_KEY,
   PLAN_METADATA_KEY,
   PRODUCTS,
-} from '@modules/subscriptions/subscriptions.catalog';
+} from '@modules/offers/offers.catalog';
 import type {
   CatalogPlan,
   CatalogPrice,
   CatalogProduct,
-} from '@modules/subscriptions/subscriptions.types';
+} from '@modules/offers/offers.types';
+import { planOf } from '@modules/offers/offers.utils';
+import { StripeService } from '@modules/stripe/stripe.service';
 import { Offer } from '@tokenizer/shared/types';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import Stripe from 'stripe';
@@ -74,8 +75,11 @@ export class StripeSyncCommand extends CommandRunner {
     dryRun: boolean,
   ): Promise<void> {
     const { client } = this.stripeService;
-    const metadata: Record<string, string> = { [PLAN_METADATA_KEY]: plan };
+    const metadata = { [PLAN_METADATA_KEY]: plan };
     const images = this.imagesOf(product.image);
+    const marketingFeatures = product.marketingFeatures.map((name) => ({
+      name,
+    }));
     const existing = await this.findProduct(product.id);
 
     if (!existing) {
@@ -84,16 +88,24 @@ export class StripeSyncCommand extends CommandRunner {
         await client.products.create({
           id: product.id,
           name: product.name,
+          description: product.description,
+          marketing_features: marketingFeatures,
           images,
           metadata,
         });
       return;
     }
 
+    const metadataChanges = this.metadataChanges(existing.metadata, metadata);
     const isUpToDate =
       existing.name === product.name &&
-      (!images || existing.images.join() === images.join()) &&
-      existing.metadata[PLAN_METADATA_KEY] === metadata[PLAN_METADATA_KEY];
+      (existing.description ?? '') === product.description &&
+      this.sameList(
+        existing.marketing_features.map(({ name }) => name ?? ''),
+        product.marketingFeatures,
+      ) &&
+      (!images || this.sameList(existing.images, images)) &&
+      !metadataChanges;
 
     if (isUpToDate) {
       console.log(`= product ${product.id}`);
@@ -104,8 +116,11 @@ export class StripeSyncCommand extends CommandRunner {
     if (!dryRun)
       await client.products.update(product.id, {
         name: product.name,
+        description: product.description,
+        // An empty string is how Stripe clears the list.
+        marketing_features: marketingFeatures.length ? marketingFeatures : '',
         images,
-        metadata,
+        metadata: metadataChanges ?? undefined,
       });
   }
 
@@ -116,7 +131,10 @@ export class StripeSyncCommand extends CommandRunner {
   ): Promise<void> {
     const { client } = this.stripeService;
     const { product } = CATALOG[offer];
-    const metadata: Record<string, string> = { [OFFER_METADATA_KEY]: offer };
+    const metadata = {
+      [OFFER_METADATA_KEY]: offer,
+      [PLAN_METADATA_KEY]: planOf(offer),
+    };
     // Archived prices included: archiving one is how an offer is closed, and
     // that must survive a sync.
     const { data } = await client.prices.list({
@@ -125,15 +143,14 @@ export class StripeSyncCommand extends CommandRunner {
     const existing = data.at(0);
 
     if (existing && this.matches(existing, product.id, price)) {
-      const isUpToDate =
-        existing.metadata[OFFER_METADATA_KEY] === metadata[OFFER_METADATA_KEY];
+      const metadataChanges = this.metadataChanges(existing.metadata, metadata);
       const archived = existing.active ? '' : ' (archived, left as is)';
 
       console.log(
-        `${isUpToDate ? '=' : '~'} price ${price.lookupKey}${archived}`,
+        `${metadataChanges ? '~' : '='} price ${price.lookupKey}${archived}`,
       );
-      if (!isUpToDate && !dryRun)
-        await client.prices.update(existing.id, { metadata });
+      if (metadataChanges && !dryRun)
+        await client.prices.update(existing.id, { metadata: metadataChanges });
       return;
     }
 
@@ -153,6 +170,29 @@ export class StripeSyncCommand extends CommandRunner {
     });
     if (existing?.active)
       await client.prices.update(existing.id, { active: false });
+  }
+
+  // The update turning `existing` into exactly `wanted`, or null when they
+  // already match. Stripe merges metadata, so a key the catalog dropped is
+  // cleared with an empty string.
+  private metadataChanges(
+    existing: Stripe.Metadata,
+    wanted: Record<string, string>,
+  ): Nullable<Record<string, string>> {
+    const stale = Object.keys(existing).filter((key) => !(key in wanted));
+    const changed = Object.keys(wanted).filter(
+      (key) => existing[key] !== wanted[key],
+    );
+    if (!stale.length && !changed.length) return null;
+
+    return {
+      ...Object.fromEntries(stale.map((key) => [key, ''])),
+      ...wanted,
+    };
+  }
+
+  private sameList(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((entry, i) => entry === b[i]);
   }
 
   private matches(

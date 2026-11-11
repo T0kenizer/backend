@@ -1,4 +1,4 @@
-import { CATALOG } from '@modules/subscriptions/subscriptions.catalog';
+import { CATALOG } from '@modules/offers/offers.catalog';
 import { Offer } from '@tokenizer/shared/types';
 
 describe('CATALOG', () => {

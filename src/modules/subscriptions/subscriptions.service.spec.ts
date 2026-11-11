@@ -256,6 +256,7 @@ describe('SubscriptionsService', () => {
 
       await expect(service.retrieve(USER_UUID)).resolves.toEqual({
         offer: Offer.PremiumMonthly,
+        plan: Plan.Premium,
         status: 'active',
         price: { amount: 199, currency: 'eur', interval: 'month' },
         currentPeriodEnd: new Date(PERIOD_END * 1000),

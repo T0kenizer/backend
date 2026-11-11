@@ -54,7 +54,6 @@ describe('SessionsService', () => {
             createdAt: 1_000,
             lastSeenAt: 5_000,
             userAgent: IPHONE_UA,
-            ip: '203.0.113.7',
             location: { city: 'Lyon', region: 'Rhône', country: 'FR' },
           }),
           [`${SESSION_KEY_PREFIX}laptop`]: stored({
@@ -82,7 +81,6 @@ describe('SessionsService', () => {
       expect(sessions[0].device.browser).toBe('Chrome 124');
       expect(sessions[1]).toMatchObject({
         createdAt: new Date(1_000),
-        ip: '203.0.113.7',
         device: { type: DeviceType.Mobile, browser: 'Safari 17' },
         location: { city: 'Lyon', region: 'Rhône', country: 'FR' },
       });
@@ -210,7 +208,6 @@ describe('SessionsService', () => {
         user: { uuid: USER_UUID },
         session: {},
         sessionID: 'sid',
-        ip: '::ffff:198.51.100.4',
         get: (name: string) => headers[name.toLowerCase()],
       }) as unknown as Request;
 
@@ -226,7 +223,6 @@ describe('SessionsService', () => {
 
       expect(req.session).toMatchObject({
         userAgent: IPHONE_UA,
-        ip: '198.51.100.4',
         location: { city: 'Lyon', region: null, country: 'FR' },
       });
       expect(multi.sAdd).toHaveBeenCalledWith(

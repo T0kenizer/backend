@@ -1,4 +1,4 @@
-import type { PRODUCTS } from '@modules/subscriptions/subscriptions.catalog';
+import type { PRODUCTS } from '@modules/offers/offers.catalog';
 import { BillingInterval } from '@tokenizer/shared/types';
 
 export interface CatalogPrice {
@@ -19,6 +19,8 @@ export interface CatalogOffer {
 export interface CatalogProduct {
   id: string;
   name: string;
+  description: string;
+  marketingFeatures: readonly string[];
   image?: string;
 }
 

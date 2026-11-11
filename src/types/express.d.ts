@@ -13,7 +13,6 @@ declare module 'express-session' {
     createdAt?: number;
     lastSeenAt?: number;
     userAgent?: string;
-    ip?: string;
     location?: {
       city: Nullable<string>;
       region: Nullable<string>;

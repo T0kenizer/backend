@@ -1,10 +1,22 @@
-import type * as Types from '@modules/subscriptions/subscriptions.types';
+import type * as Types from '@modules/offers/offers.types';
+import { PlanAccess } from '@modules/plans/plans.access';
 import {
   BillingInterval,
   Offer,
   Plan,
   type UserPlan,
 } from '@tokenizer/shared/types';
+
+function maxSeatsFeature(plan: Plan): string {
+  return `Up to ${PlanAccess.of(plan).maxSeats} seats per table`;
+}
+
+function maxActiveGamesFeature(plan: Plan): string {
+  const { maxActiveGames: max } = PlanAccess.of(plan);
+  if (max === Infinity) return 'As many games as you want';
+
+  return `Up to ${max} active ${max === 1 ? 'game' : 'games'} at once`;
+}
 
 export const PRODUCTS: Record<
   Exclude<UserPlan, Plan.Free>,
@@ -13,10 +25,29 @@ export const PRODUCTS: Record<
   [Plan.Premium]: {
     id: 'tokenizer_premium',
     name: 'Tokenizer Premium',
+    description: 'More seats. More possibilities.',
+    marketingFeatures: [
+      'Create and join tables',
+      maxSeatsFeature(Plan.Premium),
+      maxActiveGamesFeature(Plan.Premium),
+      'Poker mode',
+      'Sandbox mode',
+    ],
   },
   [Plan.Founder]: {
     id: 'tokenizer_founder',
     name: 'Tokenizer Founder',
+    description:
+      'Back Tokenizer from the very start and keep permanent access to the included features.',
+    marketingFeatures: [
+      'Create and join tables',
+      maxSeatsFeature(Plan.Founder),
+      maxActiveGamesFeature(Plan.Founder),
+      'Poker mode',
+      'Sandbox mode',
+      'One-time payment, no subscription',
+      'Founder status',
+    ],
   },
 };
 

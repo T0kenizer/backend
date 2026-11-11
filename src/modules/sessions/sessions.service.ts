@@ -146,7 +146,6 @@ export class SessionsService {
     session.createdAt ??= now;
     session.lastSeenAt = now;
     session.userAgent = req.get('user-agent');
-    session.ip = req.ip?.replace(/^::ffff:/, '');
     session.location = SessionsService.locate(req);
 
     const key = USER_SESSIONS_KEY_PREFIX + user.uuid;
@@ -174,7 +173,6 @@ export class SessionsService {
       lastSeenAt: new Date(session.lastSeenAt ?? now),
       expiresAt,
       expiresIn: expiresAt ? Math.max(0, expiresAt.getTime() - now) : null,
-      ip: session.ip ?? null,
       device: SessionsService.describeDevice(session.userAgent),
       location: session.location ?? null,
     };
