@@ -1,9 +1,9 @@
-import { File } from '@entities/file.entity';
-import { EntityRepository } from '@mikro-orm/core';
+import type { File } from '@entities/file.entity';
+import type { EntityRepository } from '@mikro-orm/core';
 import { FilesService } from '@modules/files/files.service';
-import * as Types from '@modules/files/files.types';
-import { FirebaseService } from '@modules/firebase/firebase.service';
-import { RedisCacheService } from '@modules/redis/services/redis-cache.service';
+import type * as Types from '@modules/files/files.types';
+import type { FirebaseService } from '@modules/firebase/firebase.service';
+import type { RedisCacheService } from '@modules/redis/services/redis-cache.service';
 import { BadRequestException } from '@nestjs/common';
 import sharp from 'sharp';
 

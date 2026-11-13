@@ -1,6 +1,6 @@
-import { Round } from '@modules/game-core/free/round';
 import { GameSession } from '@modules/game-core/runtime/game-session';
 import type { Participant } from '@modules/game-core/runtime/participant';
+import { Round } from '@modules/game-core/sandbox/round';
 import { BadRequestException } from '@nestjs/common';
 import { MIN_SEATS } from '@tokenizer/shared/constants/games.constants';
 import {
@@ -9,11 +9,11 @@ import {
   GameSessionStatus,
   ParticipantStatus,
   RoundStatus,
-  type FreeGameConfig,
   type RoundResolution,
+  type SandboxGameConfig,
 } from '@tokenizer/shared/types';
 
-export class FreeSession extends GameSession<FreeGameConfig> {
+export class SandboxSession extends GameSession<SandboxGameConfig> {
   currentRound?: Round;
   roundsPlayed = 0;
 

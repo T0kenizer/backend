@@ -388,7 +388,7 @@ describe('GameRoomsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('refuses the free table to a plan that does not pay for it', async () => {
+      it('refuses the sandbox to a plan that does not pay for it', async () => {
         await expect(
           service.createGame(OWNER_UUID, {
             name: GAME_NAME,
@@ -397,7 +397,7 @@ describe('GameRoomsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('opens the free table for a plan that does', async () => {
+      it('opens the sandbox for a plan that does', async () => {
         users.getUserByUuid.mockResolvedValueOnce({
           uuid: OWNER_UUID,
           username: 'owner',
@@ -415,15 +415,14 @@ describe('GameRoomsService', () => {
       });
 
       it('answers what a host may open a table in, poker first', () => {
-        expect(service.listModes().map((entry) => entry.mode)).toEqual([
+        expect(Object.keys(service.listModes())).toEqual([
           GameMode.Poker,
           GameMode.Free,
         ]);
       });
 
       it('says out loud which of the modes is still an experiment', () => {
-        const experimental = service
-          .listModes()
+        const experimental = Object.values(service.listModes())
           .filter((entry) => entry.experimental)
           .map((entry) => entry.mode);
 

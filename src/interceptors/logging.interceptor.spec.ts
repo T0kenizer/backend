@@ -1,3 +1,4 @@
+import { SkipLogging } from '@decorators/logging.decorators';
 import { LoggingInterceptor } from '@interceptors/logging.interceptor';
 import {
   CallHandler,
@@ -9,8 +10,19 @@ import {
 import { firstValueFrom, of, throwError } from 'rxjs';
 
 describe(LoggingInterceptor.name, () => {
-  const context = (): ExecutionContext =>
+  class LoggedController {
+    handle() {}
+  }
+
+  @SkipLogging()
+  class SilentController {
+    handle() {}
+  }
+
+  const context = (controller: typeof LoggedController = LoggedController) =>
     ({
+      getHandler: () => controller.prototype.handle,
+      getClass: () => controller,
       switchToHttp: () => ({
         getRequest: () => ({
           method: 'GET',
@@ -25,10 +37,14 @@ describe(LoggingInterceptor.name, () => {
       handle: () => (error ? throwError(() => error) : of('ok')),
     }) as CallHandler;
 
-  const run = (error?: unknown, debug = false) =>
+  const run = (
+    error?: unknown,
+    debug = false,
+    controller?: typeof LoggedController,
+  ) =>
     firstValueFrom(
       new LoggingInterceptor(debug).intercept(
-        context(),
+        context(controller),
         handler(error),
       ) as ReturnType<CallHandler['handle']>,
     );
@@ -77,5 +93,15 @@ describe(LoggingInterceptor.name, () => {
     expect(Logger.prototype.log).toHaveBeenCalledWith(
       expect.stringContaining('user@tokenizer.fr'),
     );
+  });
+
+  it('should stay quiet on a controller marked @SkipLogging', async () => {
+    await expect(run(undefined, true, SilentController)).resolves.toBe('ok');
+    await expect(
+      run(new InternalServerErrorException(), true, SilentController),
+    ).rejects.toThrow();
+
+    expect(Logger.prototype.log).not.toHaveBeenCalled();
+    expect(Logger.prototype.error).not.toHaveBeenCalled();
   });
 });

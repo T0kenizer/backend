@@ -9,7 +9,12 @@ import {
 } from '@modules/sessions/sessions.constants';
 import { UsersService } from '@modules/users/users.service';
 import { Injectable } from '@nestjs/common';
-import { DeviceType, UserSession } from '@tokenizer/shared/types';
+import {
+  DeviceType,
+  ListSessionsQuery,
+  ListSessionsResponse,
+  Session,
+} from '@tokenizer/shared/types';
 import Bowser from 'bowser';
 import { createHash } from 'crypto';
 import type { Request, Response } from 'express';
@@ -96,18 +101,22 @@ export class SessionsService {
     });
   }
 
-  public async list(uuid: string, req: Request): Promise<UserSession[]> {
+  public async list(
+    uuid: string,
+    { offset, limit }: ListSessionsQuery,
+    req: Request,
+  ): Promise<ListSessionsResponse> {
     const { client } = this.redisService;
     const key = USER_SESSIONS_KEY_PREFIX + uuid;
 
     const sessionIds = await client.sMembers(key);
-    if (!sessionIds.length) return [];
+    if (!sessionIds.length) return { items: [], total: 0 };
 
     const payloads = await client.mGet(
       sessionIds.map((sessionId) => SESSION_KEY_PREFIX + sessionId),
     );
 
-    const sessions: UserSession[] = [];
+    const sessions: Session[] = [];
     const expired: string[] = [];
 
     sessionIds.forEach((sessionId, index) => {
@@ -120,9 +129,12 @@ export class SessionsService {
 
     if (expired.length) await client.sRem(key, expired);
 
-    return sessions.sort(
-      (a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime(),
-    );
+    sessions.sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime());
+
+    return {
+      items: sessions.slice(offset, offset + limit),
+      total: sessions.length,
+    };
   }
 
   public async track(req: Request): Promise<void> {
@@ -134,7 +146,6 @@ export class SessionsService {
     session.createdAt ??= now;
     session.lastSeenAt = now;
     session.userAgent = req.get('user-agent');
-    session.ip = req.ip?.replace(/^::ffff:/, '');
     session.location = SessionsService.locate(req);
 
     const key = USER_SESSIONS_KEY_PREFIX + user.uuid;
@@ -149,7 +160,7 @@ export class SessionsService {
     sessionId: string,
     session: StoredSession,
     req: Request,
-  ): UserSession {
+  ): Session {
     const now = Date.now();
     const expiresAt = session.cookie.expires
       ? new Date(session.cookie.expires)
@@ -162,7 +173,6 @@ export class SessionsService {
       lastSeenAt: new Date(session.lastSeenAt ?? now),
       expiresAt,
       expiresIn: expiresAt ? Math.max(0, expiresAt.getTime() - now) : null,
-      ip: session.ip ?? null,
       device: SessionsService.describeDevice(session.userAgent),
       location: session.location ?? null,
     };

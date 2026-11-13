@@ -1,4 +1,4 @@
-import { User } from '@entities/user.entity';
+import type { User } from '@entities/user.entity';
 
 declare module 'express' {
   interface Request {
@@ -13,7 +13,6 @@ declare module 'express-session' {
     createdAt?: number;
     lastSeenAt?: number;
     userAgent?: string;
-    ip?: string;
     location?: {
       city: Nullable<string>;
       region: Nullable<string>;

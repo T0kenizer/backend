@@ -9,6 +9,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -27,13 +28,14 @@ export class UserSessionsController {
   @UseGuards(AuthenticatedGuard, AccessGuard)
   @AllowSelf('uuid')
   @Roles(...ADMIN_ROLES)
-  @ZodSerializerDto([DTOs.UserSession])
+  @ZodSerializerDto(DTOs.ListSessionsResponse)
   public async list(
     @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Query() query: DTOs.ListSessionsQuery,
     @Req() req: Request,
   ) {
     const user = await this.usersService.getUserByUuid(uuid);
 
-    return this.sessionsService.list(user.uuid, req);
+    return this.sessionsService.list(user.uuid, query, req);
   }
 }

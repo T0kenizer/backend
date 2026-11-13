@@ -50,9 +50,10 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 - `@guards/*` → `src/guards/*`
 - `@interceptors/*` → `src/interceptors/*`
 - `@commands/*` → `src/modules/commands/*`
-- `@utils/*` → `src/utils/*` (declared, but the directory does not exist yet)
+- `@utils/*` → `src/utils/*`
 - `@/*` → `src/*`
-- `@test/*` → `test/*` (tests also get `@factories/*` → `test/factories/*`)
+- `@test/*` → `test/*`
+- `@factories/*` → `test/factories/*`
 
 **Module structure** (`src/modules/`):
 
@@ -65,6 +66,13 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 - `mail/` — `@nestjs-modules/mailer` with Handlebars templates in `templates/`. Mails are **queued** (BullMQ `MAIL_QUEUE`) and sent by `MailConsumer`. See the Mail conventions below.
 - `files/` — file uploads to Firebase Storage: the `File` row is persisted as `Pending` before the transfer (crash-safe), images are processed with sharp, upload runs sync or async (`FILES_QUEUE` + `FilesConsumer`).
 - `firebase/` — `FirebaseService` wrapping firebase-admin (Storage bucket access).
+- `stripe/` — `StripeService` wrapping the Stripe SDK client.
+- `subscriptions/` — Stripe billing: Checkout, customer portal and webhook. See the Subscriptions conventions below.
+- `plans/` — what each plan grants (`PLAN_METADATA` in `plans.constants.ts`, read **only** through `PlanAccess` in `plans.access.ts` — `PlanAccess.for(user)` / `PlanAccess.of(plan)` then `grants(...features)`, `allowsMode`, `allowsSeats`, `maxSeats`, `maxActiveGames`, `features`; `FeatureGuard`, `GameRoomsService`, the offers catalog and `GET /plans` all go through it, never through `PLAN_METADATA` directly) and the public `GET /plans`, which serves the features of every plan, `Anonymous` and `Free` included. It also holds `PLAN_TIERS`, the rank used to pick the best of several subscriptions.
+- `offers/` — what is sold: the catalog (`PRODUCTS` and `CATALOG` in `offers.catalog.ts`, read by `subscriptions/` and the `stripe-sync` command), `planOf(offer)` in `offers.utils.ts`, and the public `GET /offers`, which lists every offer of the catalog with the plan it grants and its displayed price. `Free` is a plan but no offer, so the pricing page joins `GET /offers` to `GET /plans` on `plan`. The English `description` / `marketingFeatures` of `PRODUCTS` are for Stripe only and never reach the frontend, which words the pricing page itself.
+
+  The plan and offer config lives in the backend and **not in `@tokenizer/shared`**, which only keeps the `Plan`/`Feature`/`Offer`/`BillingInterval` enums, `USER_PLANS` and the response schemas.
+
 - `redis/` — three clients exposed as injectable services in `services/`: `RedisService` (core, session storage), `RedisQueueService` (BullMQ connection — always pass its `bullConnection` adapter, never the raw client), `RedisCacheService`. Each has its own host/port env vars.
 - `game-core/` — game runtime exposed over REST (`GameRuntimeController`) and WebSocket (`GameRuntimeGateway`, Socket.IO events `game:*`, payloads validated with the shared Zod schemas). Three supports, three roles, no overlap — this is the module's structuring constraint:
   - **PostgreSQL is the source of truth** (`GameSessionsService`): status, seats, balances, claims, activity. `GameRuntimeService` holds an in-memory aggregate (`runtime/`) that is a **cache** of those rows, rebuilt whenever a room opens.
@@ -76,7 +84,7 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 
   See `documentation.md` in the module — it also documents, in section 7, exactly what the single-instance assumption costs and what multi-instance would require.
 
-- `commands/` — `nest-commander` CLI commands (e.g. `create-superuser`). Entry point is `src/cli.ts`.
+- `commands/` — `nest-commander` CLI commands (`create-superuser`, `stripe-sync`). Entry point is `src/cli.ts`.
 - `health.controller.ts` — `GET /health` (liveness) and `GET /health/ready` (readiness: pings Postgres and the three Redis clients with a 1s timeout).
 
 **Cross-cutting** (outside `src/modules/`):
@@ -143,7 +151,8 @@ Every var below except `PORT` is declared in `src/modules/config/config.schema.t
 | `SECRET_KEY`                                                  | Session secret                                                                   |
 | `FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY/STORAGE_BUCKET` | Firebase Storage (`\n` in the key is unescaped automatically)                    |
 | `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`                        | Google OAuth2                                                                    |
-| `FRONTEND_URL`                                                | Used for post-OAuth redirect                                                     |
+| `STRIPE_SECRET_KEY/WEBHOOK_SECRET/CALLBACK_URL`               | Stripe billing (API key, webhook signing secret, browser return URL)             |
+| `FRONTEND_URL`                                                | Used for post-OAuth and post-Stripe redirects                                    |
 
 ## Database / Migrations
 
@@ -176,6 +185,15 @@ After modifying an entity, run `npm run makemigrations` to generate a migration,
   - `stayConnected: false` (default) → `session.absoluteExpiresAt` is stamped at `now + SESSION_TIMEOUT_MS` (1 day), and `sessionExpirationMiddleware` (registered in `setup.ts`, right after `session()`) rewrites `cookie.maxAge` to the remaining time on every request. That is what stops `rolling` from renewing a session that was never meant to persist.
 - `GET /users/:uuid/sessions` (self or admin, `UserSessionsController`) lists a user's live sessions. express-session cannot look sessions up by user, so `SessionsService.track()` keeps a Redis set `user-sessions:{uuid}` of session ids, and stamps the session with its user agent, IP and Cloudflare location (`CF-IPCountry`, plus `CF-IPCity`/`CF-Region` when the "Add visitor location headers" managed transform is on). It runs on login and then from `sessionActivityMiddleware` (after `passport.session()`), throttled to once per `SESSION_ACTIVITY_INTERVAL_MS`. Expired ids are pruned lazily by `list()`. The listing exposes a sha256 of each session id, never the raw id. `POST /sessions` and `GET /sessions/current` return the same description of the current session, plus its `user`.
 - The flag is named `stayConnected` everywhere — DTO, service, `SessionData`. It used to be `rememberMe`; the name lives in `@tokenizer/shared`, so renaming it again means changing shared first.
+
+## Subscriptions
+
+- **A plan is what a user holds, an offer is how it is sold.** `Plan` is stored on `User` and read by the guards. `Offer` lives in `@tokenizer/shared` (the frontend sends it as `?offer=`) and is never stored. A plan can be sold through several offers (monthly, yearly…) sharing one Stripe product; `planOf(offer)` gives the plan.
+- `GET /subscriptions/stripe` redirects to Checkout (no subscription yet) or to the customer portal. Stripe sends the browser back to `GET /subscriptions/stripe/callback`, which redirects to the frontend `/callback/stripe`. `POST /subscriptions/stripe/webhook` covers changes made without a browser (signature checked against the raw body, hence `rawBody: true` in `main.ts`).
+- Callback and webhook both go through `syncPlan`, which **re-reads Stripe** instead of trusting URL params or event payloads. When a customer holds several subscriptions, `entitlementsOf` picks the best one: a paying one first, then the highest plan by `PLAN_TIERS`.
+- **No Stripe id in the code or the environment.** A price is addressed by its `lookup_key`, resolved at Checkout. `npm run command -- stripe-sync` (idempotent, `--dry-run`, refuses a live key without `--live`) creates `PRODUCTS` and `CATALOG` in the account behind `STRIPE_SECRET_KEY` and mirrors their metadata, descriptions and images (product images are skipped while `FRONTEND_URL` is local, since Stripe could not fetch them).
+- Stripe prices are immutable: changing an amount makes the sync create a new price that takes over the lookup key and archive the old one — existing subscribers stay on the old price. That is why `syncPlan` maps a subscription to its offer through **`price.metadata.offer`**, never through the lookup key.
+- `Offer.FounderLifetime` is a one-time fee (`founder_lifetime`) plus a 0-priced yearly subscription (`founder_subscription`), so it behaves like any `active` subscription — cancelling it drops the founder to Free at the end of the period. To close the offer, **archive its one-time price in Stripe** and remove the frontend link; the sync never unarchives it.
 
 ## Mail
 

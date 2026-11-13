@@ -50,7 +50,7 @@
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/throttler": "^6.7.0",
     "@nestjs/websockets": "^11.1.28",
-    "@tokenizer/shared": "github:T0kenizer/shared#develop",
+    "@tokenizer/shared": "github:T0kenizer/shared#feature/stripe",
     "bcrypt": "^6.0.0",
     "bowser": "^2.14.1",
     "bullmq": "^6.1.0",
@@ -70,7 +70,8 @@
     "rxjs": "^7.8.1",
     "sharp": "^0.35.3",
     "slugify": "^1.6.9",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

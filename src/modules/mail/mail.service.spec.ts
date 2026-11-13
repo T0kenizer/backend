@@ -1,7 +1,7 @@
-import { ConfigService } from '@modules/config/config.service';
+import type { ConfigService } from '@modules/config/config.service';
 import { MailService } from '@modules/mail/mail.service';
 import * as Types from '@modules/mail/mail.types';
-import { MailerService } from '@nestjs-modules/mailer';
+import type { MailerService } from '@nestjs-modules/mailer';
 import { Logger } from '@nestjs/common';
 
 describe(MailService.name, () => {

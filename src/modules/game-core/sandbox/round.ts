@@ -1,14 +1,14 @@
-import type { ActionParams } from '@modules/game-core/free/action';
-import { Action } from '@modules/game-core/free/action';
-import { Pot } from '@modules/game-core/free/pot';
-import { TurnState } from '@modules/game-core/free/turn-state';
-import { Participant } from '@modules/game-core/runtime/participant';
+import type { Participant } from '@modules/game-core/runtime/participant';
+import type { ActionParams } from '@modules/game-core/sandbox/action';
+import { Action } from '@modules/game-core/sandbox/action';
+import { Pot } from '@modules/game-core/sandbox/pot';
+import { TurnState } from '@modules/game-core/sandbox/turn-state';
 import { BadRequestException } from '@nestjs/common';
 import {
   AmountForm,
   ParticipantStatus,
   RoundStatus,
-  type FreeGameConfig,
+  type SandboxGameConfig,
 } from '@tokenizer/shared/types';
 
 export class Round {
@@ -18,10 +18,10 @@ export class Round {
   readonly turnState: TurnState;
   readonly actionLog: Action[];
 
-  private readonly config: FreeGameConfig;
+  private readonly config: SandboxGameConfig;
   private readonly participants: Participant[];
 
-  constructor(config: FreeGameConfig, orderedParticipants: Participant[]) {
+  constructor(config: SandboxGameConfig, orderedParticipants: Participant[]) {
     this.id = crypto.randomUUID();
     this.status = RoundStatus.Init;
     this.config = config;

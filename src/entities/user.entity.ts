@@ -10,8 +10,9 @@ import {
   type Opt,
   type Ref,
 } from '@mikro-orm/core';
+import { USER_PLANS } from '@tokenizer/shared/constants/plans.constants';
 import * as Constants from '@tokenizer/shared/constants/users.constants';
-import { Plan, UserRole } from '@tokenizer/shared/types';
+import { Plan, UserRole, type UserPlan } from '@tokenizer/shared/types';
 
 @Entity({
   tableName: 'users',
@@ -62,6 +63,13 @@ export class User {
   password?: Opt<string>;
 
   @Property({
+    name: 'password_changed_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
+  passwordChangedAt?: Opt<Date>;
+
+  @Property({
     name: 'google_id',
     type: 'varchar',
     length: Constants.GOOGLE_ID_MAX_LENGTH,
@@ -70,6 +78,16 @@ export class User {
   })
   @Index({ name: 'idx_users_google_id' })
   googleId?: Opt<string>;
+
+  @Property({
+    name: 'stripe_customer_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    unique: true,
+  })
+  @Index({ name: 'idx_users_stripe_customer_id' })
+  stripeCustomerId?: Opt<string>;
 
   @ManyToOne(() => File, {
     name: 'avatar_uuid',
@@ -91,12 +109,20 @@ export class User {
 
   @Enum({
     name: 'plan',
-    items: () => [Plan.Free, Plan.Premium],
+    items: () => [...USER_PLANS],
     nativeEnumName: 'user_plan',
     nullable: false,
     default: Plan.Free,
   })
-  plan!: Opt<Exclude<Plan, Plan.Anonymous>>;
+  plan!: Opt<UserPlan>;
+
+  @Property({
+    name: 'is_founder',
+    type: 'boolean',
+    nullable: false,
+    default: false,
+  })
+  isFounder: Opt<boolean> = false;
 
   @Property({
     name: 'created_at',

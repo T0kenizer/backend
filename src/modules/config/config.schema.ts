@@ -41,5 +41,9 @@ export const configSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().nonempty(),
   GOOGLE_CALLBACK_URL: z.url(),
 
+  STRIPE_SECRET_KEY: z.string().nonempty(),
+  STRIPE_WEBHOOK_SECRET: z.string().nonempty(),
+  STRIPE_CALLBACK_URL: z.url(),
+
   FRONTEND_URL: z.url(),
 });

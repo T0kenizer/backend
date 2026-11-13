@@ -17,7 +17,7 @@ function pokerDefaults(): PokerGameConfig {
 
 describe('game modes', () => {
   it('describes every mode with a config its own schema accepts', () => {
-    for (const descriptor of GAME_MODES) {
+    for (const descriptor of Object.values(GAME_MODES)) {
       const parsed = gameConfigSchema.safeParse(descriptor.defaults);
       expect(parsed.success).toBe(true);
       // The discriminator has to agree with the descriptor, or a table opens

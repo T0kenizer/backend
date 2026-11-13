@@ -9,10 +9,13 @@ import { FilesModule } from '@modules/files/files.module';
 import { GameCoreModule } from '@modules/game-core/game-core.module';
 import { HealthController } from '@modules/health.controller';
 import { MailModule } from '@modules/mail/mail.module';
+import { OffersModule } from '@modules/offers/offers.module';
 import { PasswordResetsModule } from '@modules/password-resets/password-resets.module';
+import { PlansModule } from '@modules/plans/plans.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { RedisQueueService } from '@modules/redis/services/redis-queue.service';
 import { SessionsModule } from '@modules/sessions/sessions.module';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 import { UsersModule } from '@modules/users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
@@ -53,6 +56,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     AccountDeletionsModule,
     AccountConfirmationsModule,
     GameCoreModule,
+    SubscriptionsModule,
+    OffersModule,
+    PlansModule,
   ],
   controllers: [HealthController],
   providers: [

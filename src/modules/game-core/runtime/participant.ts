@@ -1,7 +1,4 @@
-import {
-  ParticipantStatus,
-  type ParticipantRole,
-} from '@tokenizer/shared/types';
+import { ParticipantRole, ParticipantStatus } from '@tokenizer/shared/types';
 
 export interface ParticipantParams {
   id: string;
