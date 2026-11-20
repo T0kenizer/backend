@@ -31,6 +31,19 @@ export class PokerSession extends GameSession<PokerGameConfig> {
     return this.handsPlayed;
   }
 
+  /**
+   * Whether the game has been won: a hand has been played, none is running, and
+   * too few seats still hold chips to deal the next one. The last stack
+   * standing takes the table, so there is nothing left for the host to decide.
+   */
+  get isDecided(): boolean {
+    return (
+      this.status === GameSessionStatus.Running &&
+      !this.dealInProgress &&
+      this.seatsWithChips().length < MIN_SEATS
+    );
+  }
+
   startHand(): Hand {
     this.assertNotFinished();
     if (this.dealInProgress) {
@@ -39,9 +52,7 @@ export class PokerSession extends GameSession<PokerGameConfig> {
       );
     }
 
-    const dealtIn = this.seats.filter(
-      (p) => p.status !== ParticipantStatus.Eliminated && p.balance > 0,
-    );
+    const dealtIn = this.seatsWithChips();
     if (dealtIn.length < MIN_SEATS) {
       throw new BadRequestException(
         `At least ${MIN_SEATS} seats with chips are required to deal a hand`,
@@ -64,6 +75,12 @@ export class PokerSession extends GameSession<PokerGameConfig> {
     });
     this.currentHand = hand;
     return hand;
+  }
+
+  private seatsWithChips(): Participant[] {
+    return this.seats.filter(
+      (p) => p.status !== ParticipantStatus.Eliminated && p.balance > 0,
+    );
   }
 
   private nextDealerIndex(dealtIn: Participant[]): number {

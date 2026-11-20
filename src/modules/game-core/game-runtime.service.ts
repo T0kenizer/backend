@@ -65,6 +65,12 @@ export class GameRuntimeService {
     this.sessions.delete(gameId);
   }
 
+  /** Whether the table has a winner and should close on its own. */
+  isDecided(gameId: string): boolean {
+    const session = this.getSessionOrThrow(gameId);
+    return session instanceof PokerSession && session.isDecided;
+  }
+
   isFinished(gameId: string): boolean {
     return this.sessions.get(gameId)?.status === GameSessionStatus.Finished;
   }

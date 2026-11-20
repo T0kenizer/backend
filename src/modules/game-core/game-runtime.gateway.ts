@@ -33,7 +33,9 @@ import {
   GameClientMessage,
   GameMode,
   GameServerEvent,
+  type GameSnapshot,
 } from '@tokenizer/shared/types';
+import { isGameOver } from '@tokenizer/shared/utils/games.utils';
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 
@@ -152,6 +154,7 @@ export class GameRuntimeGateway
           resolution,
         });
       }
+      this.announceIfOver(gameUuid, snapshot);
       return { snapshot, resolution };
     });
   }
@@ -187,6 +190,7 @@ export class GameRuntimeGateway
           { ...snapshot, resolution },
         );
       }
+      this.announceIfOver(gameUuid, snapshot);
       return { snapshot, resolution };
     });
   }
@@ -208,6 +212,7 @@ export class GameRuntimeGateway
         ...snapshot,
         resolution,
       });
+      this.announceIfOver(gameUuid, snapshot);
       return { snapshot, resolution };
     });
   }
@@ -261,6 +266,16 @@ export class GameRuntimeGateway
       );
     }
     return { gameUuid, participantId };
+  }
+
+  /**
+   * A settled hand can end the table on its own — the last stack standing has
+   * won. The room hears it exactly as it hears a host closing the game.
+   */
+  private announceIfOver(gameUuid: string, snapshot: GameSnapshot): void {
+    if (isGameOver(snapshot.status)) {
+      this.broadcast(gameUuid, GameServerEvent.SessionClosed, snapshot);
+    }
   }
 
   private broadcast(
