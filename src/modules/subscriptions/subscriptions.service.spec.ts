@@ -118,6 +118,7 @@ function build(
     { client } as unknown as StripeService,
     {
       get: (key: string) => (CONFIG as Record<string, unknown>)[key],
+      getOrThrow: (key: string) => (CONFIG as Record<string, unknown>)[key],
     } as unknown as ConfigService,
   );
 

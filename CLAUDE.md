@@ -66,8 +66,8 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 - `mail/` — `@nestjs-modules/mailer` with Handlebars templates in `templates/`. Mails are **queued** (BullMQ `MAIL_QUEUE`) and sent by `MailConsumer`. See the Mail conventions below.
 - `files/` — file uploads to Firebase Storage: the `File` row is persisted as `Pending` before the transfer (crash-safe), images are processed with sharp, upload runs sync or async (`FILES_QUEUE` + `FilesConsumer`).
 - `firebase/` — `FirebaseService` wrapping firebase-admin (Storage bucket access).
-- `stripe/` — `StripeService` wrapping the Stripe SDK client.
-- `subscriptions/` — Stripe billing: Checkout, customer portal and webhook. See the Subscriptions conventions below.
+- `stripe/` — `StripeService` wrapping the Stripe SDK client, and `isStripeEnabled`, the condition every Stripe module is registered under.
+- `subscriptions/` — Stripe billing: Checkout, customer portal and webhook. Only registered when Stripe is enabled. See the Subscriptions conventions below.
 - `plans/` — what each plan grants (`PLAN_METADATA` in `plans.constants.ts`, read **only** through `PlanAccess` in `plans.access.ts` — `PlanAccess.for(user)` / `PlanAccess.of(plan)` then `grants(...features)`, `allowsMode`, `allowsSeats`, `maxSeats`, `maxActiveGames`, `features`; `FeatureGuard`, `GameRoomsService`, the offers catalog and `GET /plans` all go through it, never through `PLAN_METADATA` directly) and the public `GET /plans`, which serves the features of every plan, `Anonymous` and `Free` included. It also holds `PLAN_TIERS`, the rank used to pick the best of several subscriptions.
 - `offers/` — what is sold: the catalog (`PRODUCTS` and `CATALOG` in `offers.catalog.ts`, read by `subscriptions/` and the `stripe-sync` command), `planOf(offer)` in `offers.utils.ts`, and the public `GET /offers`, which lists every offer of the catalog with the plan it grants and its displayed price. `Free` is a plan but no offer, so the pricing page joins `GET /offers` to `GET /plans` on `plan`. The English `description` / `marketingFeatures` of `PRODUCTS` are for Stripe only and never reach the frontend, which words the pricing page itself.
 
@@ -84,7 +84,7 @@ Commits go through husky + lint-staged (Prettier then ESLint on staged files). N
 
   See `documentation.md` in the module — it also documents, in section 7, exactly what the single-instance assumption costs and what multi-instance would require.
 
-- `commands/` — `nest-commander` CLI commands (`create-superuser`, `stripe-sync`). Entry point is `src/cli.ts`.
+- `commands/` — `nest-commander` CLI commands (`create-superuser`, `stripe-sync`). Entry point is `src/cli.ts`. `stripe-sync` lives in `StripeCommandsModule`, registered only when Stripe is enabled.
 - `health.controller.ts` — `GET /health` (liveness) and `GET /health/ready` (readiness: pings Postgres and the three Redis clients with a 1s timeout).
 
 **Cross-cutting** (outside `src/modules/`):
@@ -151,6 +151,7 @@ Every var below except `PORT` is declared in `src/modules/config/config.schema.t
 | `SECRET_KEY`                                                  | Session secret                                                                   |
 | `FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY/STORAGE_BUCKET` | Firebase Storage (`\n` in the key is unescaped automatically)                    |
 | `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`                        | Google OAuth2                                                                    |
+| `STRIPE_ENABLED`                                              | `true` \| `false` (default) — billing is off, and the settings below optional    |
 | `STRIPE_SECRET_KEY/WEBHOOK_SECRET/CALLBACK_URL`               | Stripe billing (API key, webhook signing secret, browser return URL)             |
 | `FRONTEND_URL`                                                | Used for post-OAuth and post-Stripe redirects                                    |
 
@@ -188,6 +189,7 @@ After modifying an entity, run `npm run makemigrations` to generate a migration,
 
 ## Subscriptions
 
+- **Stripe is off unless `STRIPE_ENABLED=true`.** Off, the `STRIPE_*` settings are optional, and `SubscriptionsModule` and `StripeCommandsModule` are not registered at all (`ConditionalModule.registerWhen(…, isStripeEnabled)`): no route under `/subscriptions`, no `stripe-sync`, no `StripeService`. On, the config requires all three settings. Never pass `ConditionalModule` the variable name instead of `isStripeEnabled`: its string condition reads an unset or empty variable, which is how compose passes an unset one, as enabled. The root `STRIPE_ENABLED` also hides the billing pages of the frontend (`NEXT_PUBLIC_STRIPE_ENABLED`, baked in at build).
 - **A plan is what a user holds, an offer is how it is sold.** `Plan` is stored on `User` and read by the guards. `Offer` lives in `@tokenizer/shared` (the frontend sends it as `?offer=`) and is never stored. A plan can be sold through several offers (monthly, yearly…) sharing one Stripe product; `planOf(offer)` gives the plan.
 - `GET /subscriptions/stripe` redirects to Checkout (no subscription yet) or to the customer portal. Stripe sends the browser back to `GET /subscriptions/stripe/callback`, which redirects to the frontend `/callback/stripe`. `POST /subscriptions/stripe/webhook` covers changes made without a browser (signature checked against the raw body, hence `rawBody: true` in `main.ts`).
 - Callback and webhook both go through `syncPlan`, which **re-reads Stripe** instead of trusting URL params or event payloads. When a customer holds several subscriptions, `entitlementsOf` picks the best one: a paying one first, then the highest plan by `PLAN_TIERS`.

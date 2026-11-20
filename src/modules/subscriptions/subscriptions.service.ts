@@ -232,7 +232,7 @@ export class SubscriptionsService {
       event = this.stripeService.client.webhooks.constructEvent(
         rawBody,
         signature,
-        this.configService.get('STRIPE_WEBHOOK_SECRET'),
+        this.configService.getOrThrow('STRIPE_WEBHOOK_SECRET'),
       );
     } catch {
       throw new BadRequestException('Invalid Stripe signature');
@@ -358,7 +358,9 @@ export class SubscriptionsService {
     status: Optional<CheckoutStatus>,
     redirectUrl?: string,
   ): string {
-    const target = new URL(this.configService.get('STRIPE_CALLBACK_URL'));
+    const target = new URL(
+      this.configService.getOrThrow('STRIPE_CALLBACK_URL'),
+    );
     this.setReturnParams(target, status, redirectUrl);
 
     return target.toString();

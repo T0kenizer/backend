@@ -8,7 +8,7 @@ export class StripeService {
   public readonly isLive: boolean;
 
   constructor(protected readonly configService: ConfigService) {
-    const secretKey = this.configService.get('STRIPE_SECRET_KEY');
+    const secretKey = this.configService.getOrThrow('STRIPE_SECRET_KEY');
 
     this.client = new Stripe(secretKey);
     this.isLive = /^[a-z]+_live_/.test(secretKey);
