@@ -1,11 +1,15 @@
 import { CreateSuperUserCommand } from '@commands/create-superuser.command';
-import { StripeSyncCommand } from '@commands/stripe-sync.command';
-import { StripeModule } from '@modules/stripe/stripe.module';
+import { StripeCommandsModule } from '@commands/stripe-commands.module';
+import { isStripeEnabled } from '@modules/stripe/stripe.utils';
 import { UsersModule } from '@modules/users/users.module';
 import { Module } from '@nestjs/common';
+import { ConditionalModule } from '@nestjs/config';
 
 @Module({
-  imports: [UsersModule, StripeModule],
-  providers: [CreateSuperUserCommand, StripeSyncCommand],
+  imports: [
+    UsersModule,
+    ConditionalModule.registerWhen(StripeCommandsModule, isStripeEnabled),
+  ],
+  providers: [CreateSuperUserCommand],
 })
 export class CommandsModule {}

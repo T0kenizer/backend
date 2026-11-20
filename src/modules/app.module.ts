@@ -15,10 +15,12 @@ import { PlansModule } from '@modules/plans/plans.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { RedisQueueService } from '@modules/redis/services/redis-queue.service';
 import { SessionsModule } from '@modules/sessions/sessions.module';
+import { isStripeEnabled } from '@modules/stripe/stripe.utils';
 import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 import { UsersModule } from '@modules/users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ConditionalModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
@@ -56,7 +58,7 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     AccountDeletionsModule,
     AccountConfirmationsModule,
     GameCoreModule,
-    SubscriptionsModule,
+    ConditionalModule.registerWhen(SubscriptionsModule, isStripeEnabled),
     OffersModule,
     PlansModule,
   ],
