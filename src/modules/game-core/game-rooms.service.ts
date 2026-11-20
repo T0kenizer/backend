@@ -355,7 +355,10 @@ export class GameRoomsService {
 
     return {
       ...result,
-      snapshot: await this.finalize(result.snapshot, session),
+      snapshot: await this.finalize(
+        await this.endIfDecided(gameUuid, session, result.snapshot),
+        session,
+      ),
     };
   }
 
@@ -402,7 +405,10 @@ export class GameRoomsService {
 
     return {
       ...result,
-      snapshot: await this.finalize(result.snapshot, session),
+      snapshot: await this.finalize(
+        await this.endIfDecided(gameUuid, session, result.snapshot),
+        session,
+      ),
     };
   }
 
@@ -421,7 +427,10 @@ export class GameRoomsService {
 
     return {
       ...result,
-      snapshot: await this.finalize(result.snapshot, session),
+      snapshot: await this.finalize(
+        await this.endIfDecided(gameUuid, session, result.snapshot),
+        session,
+      ),
     };
   }
 
@@ -452,8 +461,40 @@ export class GameRoomsService {
     await this.ensureRoomOpen(gameUuid);
     this.assertHost(gameUuid, participantId);
 
-    const snapshot = this.runtime.closeSession(gameUuid);
     const session = await this.loadPlayableSession(gameUuid);
+    const snapshot = await this.endSession(gameUuid, session);
+
+    this.logger.log(`Session ${gameUuid} ended by its host`);
+    return this.finalize(snapshot, session);
+  }
+
+  /**
+   * Closes the table on its own once a hand leaves a single stack standing.
+   * Hands back the snapshot to send: the closed one when the game is over, the
+   * one it was given otherwise.
+   */
+  private async endIfDecided(
+    gameUuid: string,
+    session: GameSession,
+    snapshot: RuntimeSnapshot,
+  ): Promise<RuntimeSnapshot> {
+    if (!this.runtime.isDecided(gameUuid)) return snapshot;
+
+    const closed = await this.endSession(gameUuid, session);
+    this.logger.log(`Session ${gameUuid} ended: one stack left standing`);
+    return closed;
+  }
+
+  /**
+   * Everything that ends a table, whoever ends it: the final balances on the
+   * rows, the session closed, the code retired. The room itself stays up so the
+   * caller can tell the table it is over; teardown is scheduled.
+   */
+  private async endSession(
+    gameUuid: string,
+    session: GameSession,
+  ): Promise<RuntimeSnapshot> {
+    const snapshot = this.runtime.closeSession(gameUuid);
     await this.gameSessionsService.syncBalances(session, balancesOf(snapshot));
     await this.gameSessionsService.close(session, GameSessionStatus.Finished);
 
@@ -461,8 +502,7 @@ export class GameRoomsService {
     await this.codes.revoke(gameUuid);
     await this.lifecycle.scheduleRoomTeardown(gameUuid);
 
-    this.logger.log(`Session ${gameUuid} ended by its host`);
-    return this.finalize(snapshot, session);
+    return snapshot;
   }
 
   async teardownClosedRoom(gameUuid: string): Promise<void> {
