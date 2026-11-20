@@ -1,5 +1,5 @@
-import { createNodeRedisClient } from 'bullmq';
-import { createClient } from 'redis';
+import type { createNodeRedisClient } from 'bullmq';
+import type { createClient } from 'redis';
 
 export type RedisClient = ReturnType<typeof createClient>;
 

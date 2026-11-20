@@ -152,7 +152,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -312,7 +312,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -593,7 +593,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -766,22 +766,6 @@
           "enumItems": [],
           "mappedType": "uuid"
         },
-        "photo_uuid": {
-          "name": "photo_uuid",
-          "type": "uuid",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "uuid"
-        },
         "avatar_uuid": {
           "name": "avatar_uuid",
           "type": "uuid",
@@ -819,14 +803,6 @@
           "primary": false
         },
         {
-          "columnNames": ["photo_uuid"],
-          "composite": false,
-          "constraint": false,
-          "keyName": "idx_game_participants_photo_uuid",
-          "unique": false,
-          "primary": false
-        },
-        {
           "columnNames": ["session_uuid", "seat_index"],
           "composite": true,
           "constraint": true,
@@ -847,15 +823,6 @@
         "game_participants_avatar_uuid_foreign": {
           "columnNames": ["avatar_uuid"],
           "constraintName": "game_participants_avatar_uuid_foreign",
-          "localTableName": "public.game_participants",
-          "referencedTableName": "public.files",
-          "referencedColumnNames": ["uuid"],
-          "updateRule": "cascade",
-          "deleteRule": "set null"
-        },
-        "game_participants_photo_uuid_foreign": {
-          "columnNames": ["photo_uuid"],
-          "constraintName": "game_participants_photo_uuid_foreign",
           "localTableName": "public.game_participants",
           "referencedTableName": "public.files",
           "referencedColumnNames": ["uuid"],
@@ -900,7 +867,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -1085,7 +1052,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -1245,7 +1212,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -1463,9 +1430,57 @@
           "scale": null,
           "default": "'FREE'",
           "comment": null,
-          "enumItems": ["FREE", "PREMIUM"],
+          "enumItems": ["FREE", "PREMIUM", "FOUNDER"],
           "mappedType": "unknown",
           "nativeEnumName": "user_plan"
+        },
+        "stripe_customer_id": {
+          "name": "stripe_customer_id",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": true,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "is_founder": {
+          "name": "is_founder",
+          "type": "bool",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "false",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "boolean"
+        },
+        "password_changed_at": {
+          "name": "password_changed_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         }
       },
       "name": "users",
@@ -1504,6 +1519,14 @@
           "primary": false
         },
         {
+          "columnNames": ["stripe_customer_id"],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_users_stripe_customer_id",
+          "unique": false,
+          "primary": false
+        },
+        {
           "columnNames": ["username"],
           "composite": false,
           "constraint": false,
@@ -1534,6 +1557,14 @@
           "keyName": "users_pkey",
           "unique": true,
           "primary": true
+        },
+        {
+          "columnNames": ["stripe_customer_id"],
+          "composite": false,
+          "constraint": true,
+          "keyName": "users_stripe_customer_id_unique",
+          "unique": true,
+          "primary": false
         },
         {
           "columnNames": ["username"],
@@ -1575,7 +1606,7 @@
         "user_plan": {
           "name": "user_plan",
           "schema": "public",
-          "items": ["FREE", "PREMIUM"]
+          "items": ["FREE", "PREMIUM", "FOUNDER"]
         },
         "user_role": {
           "name": "user_role",
@@ -1605,7 +1636,7 @@
     "user_plan": {
       "name": "user_plan",
       "schema": "public",
-      "items": ["FREE", "PREMIUM"]
+      "items": ["FREE", "PREMIUM", "FOUNDER"]
     },
     "user_role": {
       "name": "user_role",

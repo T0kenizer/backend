@@ -1,5 +1,5 @@
-import { ConfigService } from '@modules/config/config.service';
-import * as Types from '@modules/mail/mail.types';
+import type { ConfigService } from '@modules/config/config.service';
+import type * as Types from '@modules/mail/mail.types';
 
 export const isMailConfigured = (configService: ConfigService): boolean =>
   Boolean(

@@ -1,5 +1,5 @@
 import type { GetSignedUrlConfig } from '@google-cloud/storage';
-import { Job, Queue } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
 
 export enum FileJob {
   Upload = 'upload',

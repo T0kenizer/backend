@@ -3,8 +3,8 @@ import { User } from '@entities/user.entity';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { AppModule } from '@modules/app.module';
 import { AUTH_COOKIE_NAME } from '@modules/sessions/sessions.constants';
-import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 

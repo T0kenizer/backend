@@ -1,8 +1,9 @@
 import {
   createSessionDataSchema,
   createSessionResponseSchema,
+  listSessionsQuerySchema,
+  listSessionsResponseSchema,
   retrieveSessionResponseSchema,
-  userSessionSchema,
 } from '@tokenizer/shared/schemas';
 import { createZodDto } from 'nestjs-zod';
 
@@ -19,6 +20,9 @@ export class RetrieveSessionResponse extends createZodDto(
   retrieveSessionResponseSchema,
 ) {}
 
-/** List User Sessions DTOs */
+/** List Sessions DTOs */
 
-export class UserSession extends createZodDto(userSessionSchema) {}
+export class ListSessionsQuery extends createZodDto(listSessionsQuerySchema) {}
+export class ListSessionsResponse extends createZodDto(
+  listSessionsResponseSchema,
+) {}

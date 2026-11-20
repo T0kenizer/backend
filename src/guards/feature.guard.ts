@@ -1,5 +1,6 @@
 import { FEATURE_KEY } from '@decorators/plan.decorators';
 import { User } from '@entities/user.entity';
+import { PlanAccess } from '@modules/plans/plans.access';
 import {
   CanActivate,
   ExecutionContext,
@@ -7,8 +8,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Feature, Plan } from '@tokenizer/shared/types';
-import { hasFeature } from '@tokenizer/shared/utils/plans.utils';
+import { Feature } from '@tokenizer/shared/types';
 import type { Request } from 'express';
 
 @Injectable()
@@ -26,9 +26,8 @@ export class FeatureGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<Request>();
     const user = req.user as Nullable<User>;
-    const plan = user?.plan ?? Plan.Anonymous;
 
-    if (features.every((feature) => hasFeature(plan, feature))) return true;
+    if (PlanAccess.for(user).grants(...features)) return true;
 
     throw new ForbiddenException('Your plan does not grant this action');
   }

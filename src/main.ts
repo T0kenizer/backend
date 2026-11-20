@@ -6,7 +6,7 @@ import { NestFactory } from '@nestjs/core';
 const DEFAULT_PORT = 3000;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   setupApp(app);
   setupSwagger(app);

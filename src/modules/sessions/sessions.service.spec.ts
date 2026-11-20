@@ -1,15 +1,17 @@
-import { RedisService } from '@modules/redis/services/redis.service';
+import type { RedisService } from '@modules/redis/services/redis.service';
 import {
   SESSION_KEY_PREFIX,
   USER_SESSIONS_KEY_PREFIX,
 } from '@modules/sessions/sessions.constants';
 import { SessionsService } from '@modules/sessions/sessions.service';
-import { UsersService } from '@modules/users/users.service';
+import type { UsersService } from '@modules/users/users.service';
 import { DeviceType } from '@tokenizer/shared/types';
 import type { Request } from 'express';
 
 const USER_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
+
+const QUERY = { offset: 0, limit: 20 };
 
 const IPHONE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
@@ -52,7 +54,6 @@ describe('SessionsService', () => {
             createdAt: 1_000,
             lastSeenAt: 5_000,
             userAgent: IPHONE_UA,
-            ip: '203.0.113.7',
             location: { city: 'Lyon', region: 'Rhône', country: 'FR' },
           }),
           [`${SESSION_KEY_PREFIX}laptop`]: stored({
@@ -66,7 +67,7 @@ describe('SessionsService', () => {
         ['phone', 'laptop'],
       );
 
-      const sessions = await service.list(USER_UUID, {
+      const { items: sessions } = await service.list(USER_UUID, QUERY, {
         sessionID: 'laptop',
       } as Request);
 
@@ -80,7 +81,6 @@ describe('SessionsService', () => {
       expect(sessions[0].device.browser).toBe('Chrome 124');
       expect(sessions[1]).toMatchObject({
         createdAt: new Date(1_000),
-        ip: '203.0.113.7',
         device: { type: DeviceType.Mobile, browser: 'Safari 17' },
         location: { city: 'Lyon', region: 'Rhône', country: 'FR' },
       });
@@ -103,7 +103,9 @@ describe('SessionsService', () => {
         ['dated', 'undated'],
       );
 
-      const [dated, undated] = await service.list(USER_UUID, {} as Request);
+      const {
+        items: [dated, undated],
+      } = await service.list(USER_UUID, QUERY, {} as Request);
 
       expect(dated.expiresIn).toBe(1000 * 60 * 60 * 24);
       expect(undated).toMatchObject({ expiresAt: null, expiresIn: null });
@@ -119,7 +121,9 @@ describe('SessionsService', () => {
         ['secret-sid'],
       );
 
-      const [session] = await service.list(USER_UUID, {} as Request);
+      const {
+        items: [session],
+      } = await service.list(USER_UUID, QUERY, {} as Request);
 
       // The raw id plus the cookie secret is the session: leaking it would let
       // whoever reads the listing forge the cookie.
@@ -137,9 +141,9 @@ describe('SessionsService', () => {
         ['alive', 'expired'],
       );
 
-      const sessions = await service.list(USER_UUID, {} as Request);
+      const sessions = await service.list(USER_UUID, QUERY, {} as Request);
 
-      expect(sessions).toHaveLength(1);
+      expect(sessions.total).toBe(1);
       expect(client.sRem).toHaveBeenCalledWith(
         `${USER_SESSIONS_KEY_PREFIX}${USER_UUID}`,
         ['expired'],
@@ -156,17 +160,44 @@ describe('SessionsService', () => {
         ['reused'],
       );
 
-      await expect(service.list(USER_UUID, {} as Request)).resolves.toEqual([]);
+      await expect(
+        service.list(USER_UUID, QUERY, {} as Request),
+      ).resolves.toEqual({ items: [], total: 0 });
       expect(client.sRem).toHaveBeenCalledWith(
         `${USER_SESSIONS_KEY_PREFIX}${USER_UUID}`,
         ['reused'],
       );
     });
 
+    it('pages through the sessions, counting all of them', async () => {
+      const { service } = build(
+        Object.fromEntries(
+          [1, 2, 3].map((n) => [
+            `${SESSION_KEY_PREFIX}s${n}`,
+            stored({ passport: { user: USER_UUID }, lastSeenAt: n * 1_000 }),
+          ]),
+        ),
+        ['s1', 's2', 's3'],
+      );
+
+      const { items, total } = await service.list(
+        USER_UUID,
+        { offset: 1, limit: 1 },
+        {} as Request,
+      );
+
+      expect(total).toBe(3);
+      expect(items.map((session) => session.lastSeenAt)).toEqual([
+        new Date(2_000),
+      ]);
+    });
+
     it('skips the store entirely when the user has no session', async () => {
       const { service, client } = build();
 
-      await expect(service.list(USER_UUID, {} as Request)).resolves.toEqual([]);
+      await expect(
+        service.list(USER_UUID, QUERY, {} as Request),
+      ).resolves.toEqual({ items: [], total: 0 });
       expect(client.mGet).not.toHaveBeenCalled();
     });
   });
@@ -177,7 +208,6 @@ describe('SessionsService', () => {
         user: { uuid: USER_UUID },
         session: {},
         sessionID: 'sid',
-        ip: '::ffff:198.51.100.4',
         get: (name: string) => headers[name.toLowerCase()],
       }) as unknown as Request;
 
@@ -193,7 +223,6 @@ describe('SessionsService', () => {
 
       expect(req.session).toMatchObject({
         userAgent: IPHONE_UA,
-        ip: '198.51.100.4',
         location: { city: 'Lyon', region: null, country: 'FR' },
       });
       expect(multi.sAdd).toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import { ConfigService } from '@modules/config/config.service';
+import type { ConfigService } from '@modules/config/config.service';
 import { DEFAULT_SENDER } from '@modules/mail/mail.constants';
 import { Sender } from '@modules/mail/mail.types';
 import { isMailConfigured, sender } from '@modules/mail/mail.utils';

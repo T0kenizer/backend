@@ -1,4 +1,3 @@
-import { FreeSession } from '@modules/game-core/free/free-session';
 import type {
   AddSeatParams,
   ClaimParams,
@@ -11,6 +10,7 @@ import {
 } from '@modules/game-core/game-runtime.snapshot';
 import { PokerSession } from '@modules/game-core/poker/poker-session';
 import { GameSession } from '@modules/game-core/runtime/game-session';
+import { SandboxSession } from '@modules/game-core/sandbox/sandbox-session';
 import {
   BadRequestException,
   Injectable,
@@ -46,7 +46,7 @@ export class GameRuntimeService {
     const session =
       config.mode === GameMode.Poker
         ? new PokerSession(gameId, config, ownerUuid, seats)
-        : new FreeSession(gameId, config, ownerUuid, seats);
+        : new SandboxSession(gameId, config, ownerUuid, seats);
 
     this.sessions.set(session.id, session);
     this.logger.log(`Opened game session ${session.id} (${config.mode})`);
@@ -63,6 +63,12 @@ export class GameRuntimeService {
 
   disposeSession(gameId: string): void {
     this.sessions.delete(gameId);
+  }
+
+  /** Whether the table has a winner and should close on its own. */
+  isDecided(gameId: string): boolean {
+    const session = this.getSessionOrThrow(gameId);
+    return session instanceof PokerSession && session.isDecided;
   }
 
   isFinished(gameId: string): boolean {
@@ -135,7 +141,7 @@ export class GameRuntimeService {
   }
 
   startRound(gameId: string): { snapshot: RuntimeSnapshot } {
-    const session = this.freeSessionOrThrow(gameId);
+    const session = this.sandboxSessionOrThrow(gameId);
     const round = session.startRound();
     this.logger.log(`Round ${round.id} started in ${gameId}`);
     return { snapshot: this.snapshot(gameId) };
@@ -175,14 +181,14 @@ export class GameRuntimeService {
       };
     }
 
-    const free = session as FreeSession;
+    const sandbox = session as SandboxSession;
     if (params.definitionId === undefined) {
       throw new BadRequestException(
         'This table plays its own rules — name an action from its catalog',
       );
     }
 
-    const resolution = free.submitAction(
+    const resolution = sandbox.submitAction(
       participant,
       params.definitionId,
       params.amount,
@@ -214,7 +220,7 @@ export class GameRuntimeService {
     gameId: string,
     winnerParticipantIds: string[] = [],
   ): { snapshot: RuntimeSnapshot; resolution: RoundResolution } {
-    const session = this.freeSessionOrThrow(gameId);
+    const session = this.sandboxSessionOrThrow(gameId);
     const resolution = session.resolveRound(winnerParticipantIds);
     this.logger.log(
       `Round ${resolution.roundId} of ${gameId} resolved (${resolution.reason})`,
@@ -249,9 +255,9 @@ export class GameRuntimeService {
     return session;
   }
 
-  private freeSessionOrThrow(gameId: string): FreeSession {
+  private sandboxSessionOrThrow(gameId: string): SandboxSession {
     const session = this.getSessionOrThrow(gameId);
-    if (!(session instanceof FreeSession)) {
+    if (!(session instanceof SandboxSession)) {
       throw new BadRequestException('This table is not playing its own rules');
     }
     return session;

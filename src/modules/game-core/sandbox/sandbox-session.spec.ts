@@ -1,7 +1,7 @@
-import { FreeSession } from '@modules/game-core/free/free-session';
 import type { SeatInit } from '@modules/game-core/game-core.types';
 import { defaultConfigFor } from '@modules/game-core/game-modes';
 import { GameRuntimeService } from '@modules/game-core/game-runtime.service';
+import { SandboxSession } from '@modules/game-core/sandbox/sandbox-session';
 import { BadRequestException } from '@nestjs/common';
 import {
   Direction,
@@ -11,16 +11,16 @@ import {
   ParticipantStatus,
   PokerAction,
   RoundStatus,
-  type FreeGameConfig,
+  type SandboxGameConfig,
 } from '@tokenizer/shared/types';
 
 const GAME_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_UUID = '44444444-4444-4444-8444-444444444444';
 
-function freeConfig(): FreeGameConfig {
+function sandboxConfig(): SandboxGameConfig {
   const config = defaultConfigFor(GameMode.Free);
   if (config.mode !== GameMode.Free) {
-    throw new Error('The free mode opened on another mode’s config');
+    throw new Error('The sandbox mode opened on another mode’s config');
   }
   return config;
 }
@@ -36,14 +36,14 @@ function buildSeats(count: number, balance = 1000): SeatInit[] {
   }));
 }
 
-function openSession(config: FreeGameConfig = freeConfig(), seats = 4) {
-  return new FreeSession(GAME_ID, config, OWNER_UUID, buildSeats(seats));
+function openSession(config: SandboxGameConfig = sandboxConfig(), seats = 4) {
+  return new SandboxSession(GAME_ID, config, OWNER_UUID, buildSeats(seats));
 }
 
 /** No sockets in a runtime test, so nobody is connected to anything. */
 const nobodyConnected = () => false;
 
-describe('FreeSession', () => {
+describe('SandboxSession', () => {
   describe('next player preview', () => {
     it('previews clockwise order, skips folded seats and does not move the turn', () => {
       const session = openSession();
@@ -56,7 +56,7 @@ describe('FreeSession', () => {
     });
 
     it('follows counterclockwise order and hides the preview during interruptions', () => {
-      const config = freeConfig();
+      const config = sandboxConfig();
       config.turnPolicy.direction = Direction.CounterClockwise;
       const session = openSession(config);
       const round = session.startRound();
@@ -131,7 +131,7 @@ describe('FreeSession', () => {
     });
 
     it('caps a move at the stack behind it rather than going negative', () => {
-      const session = openSession(freeConfig(), 2);
+      const session = openSession(sandboxConfig(), 2);
       const round = session.startRound();
 
       session.submitAction(session.seats[0], 'raise', 10_000);
@@ -144,7 +144,7 @@ describe('FreeSession', () => {
 
   describe('ending a round', () => {
     it('settles on its own once a single contender is left', () => {
-      const session = openSession(freeConfig(), 2);
+      const session = openSession(sandboxConfig(), 2);
       const round = session.startRound();
 
       const resolution = session.submitAction(session.seats[0], 'fold');
@@ -161,7 +161,7 @@ describe('FreeSession', () => {
     });
 
     it('leaves the round open when the host settles them by hand', () => {
-      const config = freeConfig();
+      const config = sandboxConfig();
       config.endPolicy = {
         resolution: EndResolution.ManualHost,
         conditions: [],
@@ -235,16 +235,21 @@ describe('FreeSession', () => {
 });
 
 /**
- * The seam above the engine: that a free config builds a free session at all,
- * that a poker payload is refused at one, and that the snapshot that leaves the
- * module is the free member of the union rather than poker's.
+ * The seam above the engine: that a sandbox config builds a sandbox session at
+ * all, that a poker payload is refused at one, and that the snapshot that
+ * leaves the module is the sandbox member of the union rather than poker's.
  */
-describe('GameRuntimeService, on a free table', () => {
+describe('GameRuntimeService, in sandbox mode', () => {
   let service: GameRuntimeService;
 
   beforeEach(() => {
     service = new GameRuntimeService();
-    service.registerSession(GAME_ID, freeConfig(), OWNER_UUID, buildSeats(4));
+    service.registerSession(
+      GAME_ID,
+      sandboxConfig(),
+      OWNER_UUID,
+      buildSeats(4),
+    );
   });
 
   it('serializes a round, never a hand', () => {
@@ -256,12 +261,12 @@ describe('GameRuntimeService, on a free table', () => {
 
   it('plays a catalog action through to a resolution', () => {
     const { snapshot } = service.startRound(GAME_ID);
-    if (snapshot.mode !== GameMode.Free) throw new Error('not a free table');
+    if (snapshot.mode !== GameMode.Free) throw new Error('not a sandbox');
 
     const seats = snapshot.participants;
     expect(snapshot.currentRound?.turn.activeParticipant).toBe(seats[0].id);
     expect(snapshot.currentRound?.pots[0].amount).toBe(15);
-    // A free table pools into one pot, so nothing it produces is a side pot.
+    // A sandbox pools into one pot, so nothing it produces is a side pot.
     expect(snapshot.currentRound?.pots[0].isSidePot).toBe(false);
 
     service.submitAction(

@@ -1,5 +1,5 @@
 import { SESSION_ACTIVITY_INTERVAL_MS } from '@modules/sessions/sessions.constants';
-import { SessionsService } from '@modules/sessions/sessions.service';
+import type { SessionsService } from '@modules/sessions/sessions.service';
 import type { NextFunction, Request, Response } from 'express';
 
 export function sessionExpirationMiddleware(

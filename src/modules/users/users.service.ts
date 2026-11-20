@@ -11,6 +11,10 @@ import { MailService } from '@modules/mail/mail.service';
 import * as Constants from '@modules/users/users.constants';
 import * as Types from '@modules/users/users.types';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ALLOWED_MIME_TYPES,
+  MAX_FILE_SIZE_BYTES,
+} from '@tokenizer/shared/constants/files.constants';
 import { FileStatus, PartialUpdateUserData } from '@tokenizer/shared/types';
 import bcrypt from 'bcrypt';
 import slugify from 'slugify';
@@ -94,7 +98,55 @@ export class UsersService {
     });
 
     await em.flush();
+
+    // Only imported at sign-up: a linked or returning account keeps its avatar.
+    if (data.avatarUrl) await this.importGoogleAvatar(user, data.avatarUrl);
+
     return user;
+  }
+
+  private async importGoogleAvatar(user: User, url: string): Promise<void> {
+    try {
+      const response = await fetch(this.resizeGoogleAvatarUrl(url), {
+        signal: AbortSignal.timeout(Constants.GOOGLE_AVATAR_FETCH_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const mimetype = response.headers.get('content-type')?.split(';')[0];
+      if (
+        !mimetype ||
+        !(ALLOWED_MIME_TYPES as readonly string[]).includes(mimetype)
+      )
+        throw new Error(`Unsupported content type ${mimetype}`);
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > MAX_FILE_SIZE_BYTES)
+        throw new Error(`Image too large (${buffer.length} bytes)`);
+
+      const file = await this.filesService.create(
+        {
+          buffer,
+          mimetype,
+          size: buffer.length,
+          originalname: 'google-avatar',
+        } as Express.Multer.File,
+        user,
+      );
+
+      user.avatar = ref(file);
+      await this.usersRepository.getEntityManager().flush();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to import Google avatar for user ${user.uuid}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private resizeGoogleAvatarUrl(url: string): string {
+    const size = `=s${Constants.GOOGLE_AVATAR_SIZE_PX}-c`;
+    return url.replace(/=s\d+(-c)?$/, size);
   }
 
   private async generateUniqueUsername(seed: string): Promise<string> {
@@ -225,6 +277,7 @@ export class UsersService {
   public async updatePassword(user: User, password: string): Promise<void> {
     const entityManager = this.usersRepository.getEntityManager();
     user.password = bcrypt.hashSync(password, HASH_ROUNDS);
+    user.passwordChangedAt = new Date();
     await entityManager.flush();
 
     try {

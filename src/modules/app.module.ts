@@ -9,13 +9,18 @@ import { FilesModule } from '@modules/files/files.module';
 import { GameCoreModule } from '@modules/game-core/game-core.module';
 import { HealthController } from '@modules/health.controller';
 import { MailModule } from '@modules/mail/mail.module';
+import { OffersModule } from '@modules/offers/offers.module';
 import { PasswordResetsModule } from '@modules/password-resets/password-resets.module';
+import { PlansModule } from '@modules/plans/plans.module';
 import { RedisModule } from '@modules/redis/redis.module';
 import { RedisQueueService } from '@modules/redis/services/redis-queue.service';
 import { SessionsModule } from '@modules/sessions/sessions.module';
+import { isStripeEnabled } from '@modules/stripe/stripe.utils';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 import { UsersModule } from '@modules/users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ConditionalModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
@@ -53,6 +58,9 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
     AccountDeletionsModule,
     AccountConfirmationsModule,
     GameCoreModule,
+    ConditionalModule.registerWhen(SubscriptionsModule, isStripeEnabled),
+    OffersModule,
+    PlansModule,
   ],
   controllers: [HealthController],
   providers: [

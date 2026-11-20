@@ -1,6 +1,7 @@
 import { input, password, select } from '@inquirer/prompts';
 import { CreateRequestContext, MikroORM } from '@mikro-orm/core';
 import { UsersService } from '@modules/users/users.service';
+import { USER_PLANS } from '@tokenizer/shared/constants/plans.constants';
 import { createUserDataSchema } from '@tokenizer/shared/schemas';
 import { Plan, UserRole } from '@tokenizer/shared/types';
 import { Command, CommandRunner, Option } from 'nest-commander';
@@ -33,10 +34,6 @@ const validatePassword = (value: string) => {
     result.success || result.error.issues[0]?.message || 'Invalid password'
   );
 };
-
-const SELECTABLE_PLANS = Object.values(Plan).filter(
-  (plan): plan is Exclude<Plan, Plan.Anonymous> => plan !== Plan.Anonymous,
-);
 
 @Command({
   name: 'create-superuser',
@@ -92,7 +89,7 @@ export class CreateSuperUserCommand extends CommandRunner {
 
       const plan = await select({
         message: 'Plan:',
-        choices: SELECTABLE_PLANS.map((value) => ({ name: value, value })),
+        choices: USER_PLANS.map((value) => ({ name: value, value })),
         default: Plan.Premium,
       });
 
